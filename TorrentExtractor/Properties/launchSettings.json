@@ -1,0 +1,10 @@
+﻿{
+  "profiles": {
+    "TorrentExtractor": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "DOTNET_ENVIRONMENT": "Development"
+      }
+    }
+  }
+}
