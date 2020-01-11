@@ -40,7 +40,7 @@ namespace TorrentExtractor
                 generalSettings.Validate();
                 pathSettings.Validate();
 
-                _logger.LogInformation("GeneralSettings: '{GeneralSettings}', PathSettings: '{Settings}'",
+                _logger.LogDebug("GeneralSettings: '{GeneralSettings}', PathSettings: '{Settings}'",
                     generalSettings, pathSettings);
 
                 // Create a new FileSystemWatcher and set its properties.
@@ -115,6 +115,7 @@ namespace TorrentExtractor
                 {
                     case "UHD":
                     case "2160P":
+                    case "4K":
                         destinationDir = isTvShow ? $"{(!string.IsNullOrWhiteSpace(paths.TvShows.Res2160P) ? paths.TvShows.Res2160P : paths.TvShows.ResDefault)}/{tvShowName}/{tvShowSeason}" : !string.IsNullOrWhiteSpace(paths.Movies.Res2160P) ? paths.Movies.Res2160P : paths.Movies.ResDefault;
                         validDestinationDir = true;
                         break;
@@ -160,6 +161,7 @@ namespace TorrentExtractor
             }
             
             var compressedExtensions = new[] {".rar", ".zip"};
+            var videoExtensions = new[] {".mkv", ".avi", ".mp4"};
 
             if (!isDir)
             {
@@ -180,59 +182,90 @@ namespace TorrentExtractor
                 return;
             }
 
+            var found = false;
+            
             foreach (var file in Directory.GetFiles(sourcePath))
             {
-                switch (Path.GetExtension(file))
+                var fileExtension = Path.GetExtension(file);
+
+                switch (fileExtension)
                 {
                     case ".rar":
-                        using (var archive = RarArchive.Open(file,
+                    {
+                        found = true;
+                        
+                        using var archive = RarArchive.Open(file,
                             new ReaderOptions()
                             {
                                 LeaveStreamOpen = true
-                            }))
+                            });
+                    
+                        foreach (var entry in archive.Entries)
                         {
-                            foreach (var entry in archive.Entries)
+                            if (!entry.IsDirectory)
                             {
-                                if (!entry.IsDirectory)
-                                {
-                                    _logger.LogInformation("Extracting file '{SourceFile}' to '{DestinationDir}'", entry.Key, destinationDir);
-                                    entry.WriteToDirectory(destinationDir,
-                                        new ExtractionOptions()
-                                        {
-                                            ExtractFullPath = true,
-                                            Overwrite = true
-                                        });
-                                    _logger.LogInformation("Done extracting file '{SourceFile}'", entry.Key);
-                                }
-                                else
-                                {
-                                    _logger.LogWarning("Extracting sub-dir is not supported! '{SubDirectory}'", entry.Key);
-                                }
+                                _logger.LogInformation("Extracting file '{SourceFile}' to '{DestinationDir}'", entry.Key, destinationDir);
+                                entry.WriteToDirectory(destinationDir,
+                                    new ExtractionOptions()
+                                    {
+                                        ExtractFullPath = true,
+                                        Overwrite = true
+                                    });
+                                _logger.LogInformation("Done extracting file '{SourceFile}'", entry.Key);
+                            }
+                            else
+                            {
+                                _logger.LogWarning("Extracting sub-dir is not supported! '{SubDirectory}'", entry.Key);
                             }
                         }
 
                         break;
-                    
+                    }
                     case ".zip":
-                        await using (var stream = File.OpenRead(file))
+                    {
+                        found = true;
+                        
+                        await using var stream = File.OpenRead(file);
+                        var reader = ReaderFactory.Open(stream);
+                    
+                        while (reader.MoveToNextEntry())
                         {
-                            var reader = ReaderFactory.Open(stream);
-                            while (reader.MoveToNextEntry())
+                            if (!reader.Entry.IsDirectory)
                             {
-                                if (!reader.Entry.IsDirectory)
-                                {
-                                    _logger.LogInformation("Extracting '{SourceFile}' to '{DestinationDir}'", reader.Entry.Key, destinationDir);
-                                    reader.WriteEntryToDirectory(destinationDir, new ExtractionOptions() { ExtractFullPath = true, Overwrite = true });
-                                    _logger.LogInformation("Done extracting file '{SourceFile}'", reader.Entry.Key);
-                                }
-                                else
-                                {
-                                    _logger.LogWarning("Extracting sub-dir is not supported! '{SubDirectory}'", reader.Entry.Key);
-                                }
+                                _logger.LogInformation("Extracting '{SourceFile}' to '{DestinationDir}'", reader.Entry.Key, destinationDir);
+                                reader.WriteEntryToDirectory(destinationDir, new ExtractionOptions() { ExtractFullPath = true, Overwrite = true });
+                                _logger.LogInformation("Done extracting file '{SourceFile}'", reader.Entry.Key);
+                            }
+                            else
+                            {
+                                _logger.LogWarning("Extracting sub-dir is not supported! '{SubDirectory}'", reader.Entry.Key);
                             }
                         }
+
                         break;
+                    }
+                    default:
+                    {
+                        if (videoExtensions.Contains(fileExtension))
+                        {
+                            found = true;
+                            
+                            var filename = Path.GetFileName(file);
+                            var destinationPath = Path.Combine(destinationDir, filename);
+                    
+                            _logger.LogInformation("Copying file '{SourcePath}' to '{DestinationPath}'", file, destinationPath);
+                            File.Copy(file, destinationPath, true);
+                            _logger.LogInformation("Done copying file '{SourcePath}'", file);
+                        }
+
+                        break;
+                    }
                 }
+            }
+
+            if (!found)
+            {
+                _logger.LogWarning("No valid files were found in '{SourcePath}'. Supported files are: ", sourcePath, string.Join(", ", compressedExtensions.Concat(videoExtensions)));
             }
         }
     }
