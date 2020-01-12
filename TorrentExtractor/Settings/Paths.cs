@@ -8,11 +8,13 @@ namespace TorrentExtractor.Settings
     {
         public Paths()
         {
+            BlacklistedWords = new string[0];
             Movies = new PathsByResolution();
             TvShows = new PathsByResolution();
         }
 
         [Required, MinLength(3)] public string Source { get; set; }
+        public string[] BlacklistedWords { get; set; }
         [Required] public PathsByResolution Movies { get; set; } 
         [Required] public PathsByResolution TvShows { get; set; }
 

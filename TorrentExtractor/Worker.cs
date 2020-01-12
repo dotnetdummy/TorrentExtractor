@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -69,7 +70,7 @@ namespace TorrentExtractor
         
         private void OnChanged(FileSystemEventArgs e, General generalSettings, Paths pathSettings, CancellationToken cancellationToken)
         {
-            _logger.LogInformation("File/directory '{FullPath}' {ChangeType}", e.FullPath, e.ChangeType);
+            _logger.LogInformation("File/directory '{SourcePath}' {ChangeType}", e.FullPath, e.ChangeType);
             Task.Factory.StartNew(() => ProcessAsync(e.FullPath, generalSettings, pathSettings, cancellationToken), cancellationToken, TaskCreationOptions.AttachedToParent, TaskScheduler.Current);
         }
 
@@ -77,15 +78,27 @@ namespace TorrentExtractor
         {
             try
             {
-                await ExtractAndMoveAsync(sourcePath, GetDestinationPath(sourcePath, pathSettings), generalSettings, cancellationToken);
+                if (pathSettings.BlacklistedWords.Any())
+                {
+                    foreach (var word in pathSettings.BlacklistedWords)
+                    {
+                        if (sourcePath.Contains(word, StringComparison.InvariantCultureIgnoreCase))
+                        {
+                            _logger.LogInformation("A blacklisted word '{BlacklistedWord}' was found in the path '{FullPath}'. No further processing is done.", word, sourcePath);
+                            return;
+                        }
+                    }
+                }
+                
+                await ExtractAndMoveAsync(sourcePath, GenerateDestinationPath(sourcePath, pathSettings), generalSettings, cancellationToken);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "An error occurred when processing '{FullPath}'", sourcePath);
+                _logger.LogError(ex, "An error occurred when processing '{SourcePath}'", sourcePath);
             }
         }
 
-        private string GetDestinationPath(string sourcePath, Paths paths)
+        private string GenerateDestinationPath(string sourcePath, Paths paths)
         {
             var fileNameParts = Path.GetFileName(sourcePath)
                 .Replace(" ", ".")
@@ -135,8 +148,6 @@ namespace TorrentExtractor
                 nameBuilder.Append($"{(nameBuilder.Length == 0 ? "" : " ")}{fileNamePart}");
             }
             
-            //_logger.LogInformation("{Time} :: tvShowName '{tvShowName}', tvShowSeason '{tvShowSeason}', destinationDir '{destinationDir}'", DateTimeOffset.Now, tvShowName, tvShowSeason, destinationDir);
-
             return destinationDir;
         }
 
