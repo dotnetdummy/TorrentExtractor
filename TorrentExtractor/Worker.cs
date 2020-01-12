@@ -1,6 +1,5 @@
 using System;
 using System.IO;
-using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -37,11 +36,11 @@ namespace TorrentExtractor
                 var generalSettings = _generalSettings.Value;
                 var pathSettings = _pathSettings.Value;
 
-                generalSettings.Validate();
-                pathSettings.Validate();
-
                 _logger.LogDebug("GeneralSettings: '{GeneralSettings}', PathSettings: '{Settings}'",
                     generalSettings, pathSettings);
+                
+                generalSettings.Validate();
+                pathSettings.Validate();
 
                 // Create a new FileSystemWatcher and set its properties.
                 using var watcher = new FileSystemWatcher
@@ -50,7 +49,7 @@ namespace TorrentExtractor
                 };
 
                 // Add event handlers.
-                watcher.Created += (s, e) => OnChanged(s, e, generalSettings, pathSettings, cancellationToken);
+                watcher.Created += (s, e) => OnChanged(e, generalSettings, pathSettings, cancellationToken);
 
                 // Begin watching.
                 watcher.EnableRaisingEvents = true;
@@ -68,7 +67,7 @@ namespace TorrentExtractor
             }
         }
         
-        private void OnChanged(object source, FileSystemEventArgs e, General generalSettings, Paths pathSettings, CancellationToken cancellationToken)
+        private void OnChanged(FileSystemEventArgs e, General generalSettings, Paths pathSettings, CancellationToken cancellationToken)
         {
             _logger.LogInformation("File/directory '{FullPath}' {ChangeType}", e.FullPath, e.ChangeType);
             Task.Factory.StartNew(() => ProcessAsync(e.FullPath, generalSettings, pathSettings, cancellationToken), cancellationToken, TaskCreationOptions.AttachedToParent, TaskScheduler.Current);
@@ -144,7 +143,6 @@ namespace TorrentExtractor
         private async Task ExtractAndMoveAsync(string sourcePath, string destinationDir, General generalSettings, CancellationToken cancellationToken)
         {
             var fileCopyDelaySeconds = generalSettings.FileCopyDelaySeconds;
-            var isDir = Directory.Exists(sourcePath);
             
             _logger.LogInformation("Ensuring directory exist '{DestinationDir}'", destinationDir);
             Directory.CreateDirectory(destinationDir);
@@ -159,113 +157,104 @@ namespace TorrentExtractor
                 _logger.LogInformation("Oops! apparently it wasn't a new file being added, rather Transmission removing old ones. Skipping...");
                 return;
             }
-            
-            var compressedExtensions = new[] {".rar", ".zip"};
-            var videoExtensions = new[] {".mkv", ".avi", ".mp4"};
 
-            if (!isDir)
+            await ExtractAndMoveRecursionAsync(sourcePath, destinationDir);
+        }
+
+        private async Task ExtractAndMoveRecursionAsync(string sourcePath, string destinationDir)
+        {
+            if (Directory.Exists(sourcePath))
             {
-                if (!compressedExtensions.Contains(Path.GetExtension(sourcePath)))
+                foreach (var dir in Directory.GetDirectories(sourcePath))
                 {
-                    var filename = Path.GetFileName(sourcePath);
-                    var destinationPath = Path.Combine(destinationDir, filename);
-                    
-                    _logger.LogInformation("Copying file '{SourcePath}' to '{DestinationPath}'", sourcePath, destinationPath);
-                    File.Copy(sourcePath, destinationPath, true);
-                    _logger.LogInformation("Done copying file '{SourcePath}'", sourcePath);
+                    await ExtractAndMoveRecursionAsync(dir, destinationDir);
                 }
-                else
+                foreach (var file in Directory.GetFiles(sourcePath))
                 {
-                    _logger.LogWarning("A compressed file without a containing directory is not supported! '{SourcePath}'", sourcePath);
+                    await ExtractAndMoveRecursionAsync(file, destinationDir);
                 }
 
                 return;
             }
-
-            var found = false;
             
-            foreach (var file in Directory.GetFiles(sourcePath))
+            switch (Path.GetExtension(sourcePath))
             {
-                var fileExtension = Path.GetExtension(file);
-
-                switch (fileExtension)
+                case ".mkv":
+                case ".avi":
+                case ".mp4":
                 {
-                    case ".rar":
-                    {
-                        found = true;
-                        
-                        using var archive = RarArchive.Open(file,
-                            new ReaderOptions()
-                            {
-                                LeaveStreamOpen = true
-                            });
-                    
-                        foreach (var entry in archive.Entries)
-                        {
-                            if (!entry.IsDirectory)
-                            {
-                                _logger.LogInformation("Extracting file '{SourceFile}' to '{DestinationDir}'", entry.Key, destinationDir);
-                                entry.WriteToDirectory(destinationDir,
-                                    new ExtractionOptions()
-                                    {
-                                        ExtractFullPath = true,
-                                        Overwrite = true
-                                    });
-                                _logger.LogInformation("Done extracting file '{SourceFile}'", entry.Key);
-                            }
-                            else
-                            {
-                                _logger.LogWarning("Extracting sub-dir is not supported! '{SubDirectory}'", entry.Key);
-                            }
-                        }
+                    var filename = Path.GetFileName(sourcePath);
+                    var destinationPath = Path.Combine(destinationDir, filename);
 
-                        break;
-                    }
-                    case ".zip":
-                    {
-                        found = true;
-                        
-                        await using var stream = File.OpenRead(file);
-                        var reader = ReaderFactory.Open(stream);
-                    
-                        while (reader.MoveToNextEntry())
-                        {
-                            if (!reader.Entry.IsDirectory)
-                            {
-                                _logger.LogInformation("Extracting '{SourceFile}' to '{DestinationDir}'", reader.Entry.Key, destinationDir);
-                                reader.WriteEntryToDirectory(destinationDir, new ExtractionOptions() { ExtractFullPath = true, Overwrite = true });
-                                _logger.LogInformation("Done extracting file '{SourceFile}'", reader.Entry.Key);
-                            }
-                            else
-                            {
-                                _logger.LogWarning("Extracting sub-dir is not supported! '{SubDirectory}'", reader.Entry.Key);
-                            }
-                        }
+                    _logger.LogInformation("Copying file '{SourcePath}' to '{DestinationPath}'", sourcePath,
+                        destinationPath);
+                    File.Copy(sourcePath, destinationPath, true);
+                    _logger.LogInformation("Done copying file '{SourcePath}'", sourcePath);
 
-                        break;
-                    }
-                    default:
-                    {
-                        if (videoExtensions.Contains(fileExtension))
-                        {
-                            found = true;
-                            
-                            var filename = Path.GetFileName(file);
-                            var destinationPath = Path.Combine(destinationDir, filename);
-                    
-                            _logger.LogInformation("Copying file '{SourcePath}' to '{DestinationPath}'", file, destinationPath);
-                            File.Copy(file, destinationPath, true);
-                            _logger.LogInformation("Done copying file '{SourcePath}'", file);
-                        }
-
-                        break;
-                    }
+                    break;
                 }
-            }
 
-            if (!found)
-            {
-                _logger.LogWarning("No valid files were found in '{SourcePath}'. Supported files are: ", sourcePath, string.Join(", ", compressedExtensions.Concat(videoExtensions)));
+                case ".rar":
+                {
+                    using var archive = RarArchive.Open(sourcePath,
+                        new ReaderOptions()
+                        {
+                            LeaveStreamOpen = true
+                        });
+
+                    foreach (var entry in archive.Entries)
+                    {
+                        if (!entry.IsDirectory)
+                        {
+                            _logger.LogInformation("Extracting file '{SourcePath}' to '{DestinationDir}'",
+                                entry.Key, destinationDir);
+                            entry.WriteToDirectory(destinationDir,
+                                new ExtractionOptions()
+                                {
+                                    ExtractFullPath = true,
+                                    Overwrite = true
+                                });
+                            _logger.LogInformation("Done extracting file '{SourcePath}'", entry.Key);
+                        }
+                        else
+                        {
+                            _logger.LogWarning("Extracting sub-dir is not supported! '{SubDirectory}'",
+                                entry.Key);
+                        }
+                    }
+
+                    break;
+                }
+
+                case ".zip":
+                {
+                    await using var stream = File.OpenRead(sourcePath);
+                    var reader = ReaderFactory.Open(stream);
+
+                    while (reader.MoveToNextEntry())
+                    {
+                        if (!reader.Entry.IsDirectory)
+                        {
+                            _logger.LogInformation("Extracting '{SourcePath}' to '{DestinationDir}'",
+                                reader.Entry.Key, destinationDir);
+                            reader.WriteEntryToDirectory(destinationDir,
+                                new ExtractionOptions() {ExtractFullPath = true, Overwrite = true});
+                            _logger.LogInformation("Done extracting file '{SourceFile}'", reader.Entry.Key);
+                        }
+                        else
+                        {
+                            _logger.LogWarning("Extracting sub-dir is not supported! '{SubDirectory}'",
+                                reader.Entry.Key);
+                        }
+                    }
+
+                    break;
+                }
+                default:
+                {
+                    _logger.LogDebug("File not supported '{SourcePath}'", sourcePath);
+                    break;
+                }
             }
         }
     }
