@@ -50,7 +50,7 @@ namespace TorrentExtractor
                 };
 
                 // Add event handlers.
-                watcher.Created += (s, e) => OnChanged(e, generalSettings, pathSettings, cancellationToken);
+                watcher.Created += (_, e) => OnChanged(e, generalSettings, pathSettings, cancellationToken);
 
                 // Begin watching.
                 watcher.EnableRaisingEvents = true;
@@ -84,7 +84,7 @@ namespace TorrentExtractor
                     {
                         if (sourcePath.Contains(word, StringComparison.InvariantCultureIgnoreCase))
                         {
-                            _logger.LogInformation("A blacklisted word '{BlacklistedWord}' was found in the path '{FullPath}'. No further processing is done.", word, sourcePath);
+                            _logger.LogInformation("A blacklisted word '{BlacklistedWord}' was found in the path '{FullPath}'. No further processing is done", word, sourcePath);
                             return;
                         }
                     }
@@ -113,7 +113,8 @@ namespace TorrentExtractor
             
             foreach (var fileNamePart in fileNameParts)
             {
-                if (fileNamePart.StartsWith("S0", StringComparison.InvariantCultureIgnoreCase) || fileNamePart.StartsWith("S1", StringComparison.InvariantCultureIgnoreCase))
+                var seasonPrefix = new[] {"S0", "S1", "S2", "S3", "S4", "S5"};
+                if (seasonPrefix.Any(prefix => fileNamePart.StartsWith(prefix, StringComparison.InvariantCultureIgnoreCase)))
                 {
                     isTvShow = true;
                     tvShowSeason = fileNamePart.Split('E', StringSplitOptions.RemoveEmptyEntries)[0]

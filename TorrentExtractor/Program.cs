@@ -38,13 +38,13 @@ namespace TorrentExtractor
 
         public override void Write<TState>(in LogEntry<TState> logEntry, IExternalScopeProvider scopeProvider, TextWriter textWriter)
         {
-            if (logEntry.Exception is null)
+            if (logEntry.Exception == null)
             {
                 return;
             }
 
             var message =
-                logEntry.Formatter(
+                logEntry.Formatter?.Invoke(
                     logEntry.State, logEntry.Exception);
 
             if (message == null)
