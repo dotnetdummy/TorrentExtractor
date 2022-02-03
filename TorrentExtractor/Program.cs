@@ -20,8 +20,12 @@ namespace TorrentExtractor
                 {
                     services.AddLogging(opt =>
                     {
-                        opt.AddConsole().AddConsoleFormatter<CustomConsoleFormatter, ConsoleFormatterOptions>(
-                            c => { c.TimestampFormat = "[yyyy-MM-dd HH:mm:ss] "; });
+                        opt.AddSimpleConsole(options =>
+                        {
+                            options.IncludeScopes = true;
+                            options.SingleLine = true;
+                            options.TimestampFormat = "[yyyy-MM-dd HH:mm:ss] ";
+                        });
                     });
                     services.AddHostedService<Worker>();
                     services.AddOptions();
