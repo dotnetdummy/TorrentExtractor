@@ -2,7 +2,7 @@
 Intended to be run as a service, watching for downloaded files and extracting/moving them to a desired destination.
 
 ## Pre-requirements 
-- .Net 6
+- .Net 8
 
 ## Build for linux
 Run the following to build it as self-contained (without need to install .Net on the target machine)

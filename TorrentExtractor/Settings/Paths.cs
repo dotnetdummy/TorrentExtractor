@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Text;
@@ -6,17 +7,10 @@ namespace TorrentExtractor.Settings
 {
     public class Paths
     {
-        public Paths()
-        {
-            BlacklistedWords = new string[0];
-            Movies = new PathsByResolution();
-            TvShows = new PathsByResolution();
-        }
-
         [Required, MinLength(3)] public string Source { get; set; }
-        public string[] BlacklistedWords { get; set; }
-        [Required] public PathsByResolution Movies { get; set; } 
-        [Required] public PathsByResolution TvShows { get; set; }
+        public string[] BlacklistedWords { get; set; } = Array.Empty<string>();
+        [Required] public PathsByResolution Movies { get; set; } = new();
+        [Required] public PathsByResolution TvShows { get; set; } = new();
 
         public void Validate()
         {
