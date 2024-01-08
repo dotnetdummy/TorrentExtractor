@@ -78,15 +78,16 @@ public class Worker : BackgroundService
     {
         try
         {
-            if (pathSettings.BlacklistedWords.Any())
+            if (pathSettings.WhitelistedWords.Length != 0 && !pathSettings.WhitelistedWords.Any(word => sourcePath.Contains(word, StringComparison.InvariantCultureIgnoreCase)))
             {
-                foreach (var word in pathSettings.BlacklistedWords)
-                {
-                    if (!sourcePath.Contains(word, StringComparison.InvariantCultureIgnoreCase)) continue;
-                    
-                    _logger.LogInformation("A blacklisted word '{BlacklistedWord}' was found in the path '{FullPath}'. No further processing is done", word, sourcePath);
-                    return;
-                }
+                _logger.LogInformation("No whitelisted word was found in the path '{FullPath}'. No further processing is done", sourcePath);
+                return;
+            }
+            
+            if (pathSettings.BlacklistedWords.Any(word => sourcePath.Contains(word, StringComparison.InvariantCultureIgnoreCase)))
+            {
+                _logger.LogInformation("A blacklisted word was found in the path '{FullPath}'. No further processing is done", sourcePath);
+                return;
             }
                 
             await ExtractAndMoveAsync(sourcePath, GenerateDestinationPath(sourcePath, pathSettings), generalSettings, cancellationToken);

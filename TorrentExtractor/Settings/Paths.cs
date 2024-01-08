@@ -1,21 +1,21 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
-using System.Text;
 
 namespace TorrentExtractor.Settings
 {
     public class Paths
     {
-        [Required, MinLength(3)] public string Source { get; set; }
+        public string Source { get; set; }
+        public string[] WhitelistedWords { get; set; } = Array.Empty<string>();
         public string[] BlacklistedWords { get; set; } = Array.Empty<string>();
-        [Required] public PathsByResolution Movies { get; set; } = new();
-        [Required] public PathsByResolution TvShows { get; set; } = new();
+        public PathsByResolution Movies { get; set; } = new();
+        public PathsByResolution TvShows { get; set; } = new();
 
         public void Validate()
         {
-            if(string.IsNullOrWhiteSpace(Source))
-                throw new ValidationException($"A valid {nameof(Source)} is required!");
+            if(string.IsNullOrWhiteSpace(Source) || Source.Length < 3)
+                throw new ValidationException($"A valid {nameof(Source)} with at least 3 chars is required!");
             
             if(string.IsNullOrWhiteSpace(Movies?.ResDefault))
                 throw new ValidationException($"A valid {nameof(Movies)}--{nameof(Movies.ResDefault)} is required!");
@@ -52,14 +52,13 @@ namespace TorrentExtractor.Settings
             
             return string.Join(", ", info);
         }
-    }
 
-    public class PathsByResolution
-    {
-        public string Res2160P  { get; set; }
-        public string Res1080P { get; set; }
-        public string Res720P { get; set; }
-        
-        [Required, MinLength(3)] public string ResDefault { get; set; }
+        public class PathsByResolution
+        {
+            public string Res2160P  { get; set; }
+            public string Res1080P { get; set; }
+            public string Res720P { get; set; }
+            public string ResDefault { get; set; }
+        }
     }
 }
