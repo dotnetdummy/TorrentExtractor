@@ -1,6 +1,6 @@
 # TorrentExtractor
 
-Intended to be run as a service, watching for downloaded files and extracting/moving them to a desired destination.
+Intended to be run as a service, watching for downloaded files and extracting/moving them to a desired destination. Can also be run as a [docker image](https://hub.docker.com/r/dotnetdummy/torrent-extractor).
 
 ## Pre-requirements
 
