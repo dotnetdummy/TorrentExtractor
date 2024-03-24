@@ -26,7 +26,7 @@ public class Program
                 });
                 services.AddHostedService<Worker>();
                 services.AddOptions();
-                services.Configure<Settings.General>(hostContext.Configuration.GetSection("General"));
+                services.Configure<Settings.Core>(hostContext.Configuration.GetSection("Core"));
                 services.Configure<Settings.Paths>(hostContext.Configuration.GetSection("Paths"));
             });
 }

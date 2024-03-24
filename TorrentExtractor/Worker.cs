@@ -18,13 +18,13 @@ namespace TorrentExtractor;
 public class Worker : BackgroundService
 {
     private readonly ILogger<Worker> _logger;
-    private readonly IOptions<General> _generalSettings;
+    private readonly IOptions<Core> _coreSettings;
     private readonly IOptions<Paths> _pathSettings;
 
-    public Worker(ILogger<Worker> logger, IOptions<General> generalSettings, IOptions<Paths> pathSettings)
+    public Worker(ILogger<Worker> logger, IOptions<Core> coreSettings, IOptions<Paths> pathSettings)
     {
         _logger = logger;
-        _generalSettings = generalSettings;
+        _coreSettings = coreSettings;
         _pathSettings = pathSettings;
     }
 
@@ -34,13 +34,13 @@ public class Worker : BackgroundService
         {
             _logger.LogInformation("Application starting...");
 
-            var generalSettings = _generalSettings.Value;
+            var coreSettings = _coreSettings.Value;
             var pathSettings = _pathSettings.Value;
 
             _logger.LogDebug("GeneralSettings: '{GeneralSettings}', PathSettings: '{Settings}'",
-                generalSettings, pathSettings);
+                coreSettings, pathSettings);
                 
-            generalSettings.Validate();
+            coreSettings.Validate();
             pathSettings.Validate();
 
             // Create a new FileSystemWatcher and set its properties.
@@ -50,7 +50,7 @@ public class Worker : BackgroundService
             };
 
             // Add event handlers.
-            watcher.Created += (_, e) => OnChanged(e, generalSettings, pathSettings, cancellationToken);
+            watcher.Created += (_, e) => OnChanged(e, coreSettings, pathSettings, cancellationToken);
 
             // Begin watching.
             watcher.EnableRaisingEvents = true;
@@ -68,29 +68,29 @@ public class Worker : BackgroundService
         }
     }
         
-    private void OnChanged(FileSystemEventArgs e, General generalSettings, Paths pathSettings, CancellationToken cancellationToken)
+    private void OnChanged(FileSystemEventArgs e, Core coreSettings, Paths pathSettings, CancellationToken cancellationToken)
     {
         _logger.LogInformation("File/directory '{SourcePath}' {ChangeType}", e.FullPath, e.ChangeType);
-        Task.Factory.StartNew(() => ProcessAsync(e.FullPath, generalSettings, pathSettings, cancellationToken), cancellationToken, TaskCreationOptions.AttachedToParent, TaskScheduler.Current);
+        Task.Factory.StartNew(() => ProcessAsync(e.FullPath, coreSettings, pathSettings, cancellationToken), cancellationToken, TaskCreationOptions.AttachedToParent, TaskScheduler.Current);
     }
 
-    private async Task ProcessAsync(string sourcePath, General generalSettings, Paths pathSettings, CancellationToken cancellationToken)
+    private async Task ProcessAsync(string sourcePath, Core coreSettings, Paths pathSettings, CancellationToken cancellationToken)
     {
         try
         {
-            if (pathSettings.WhitelistedWords.Length != 0 && !pathSettings.WhitelistedWords.Any(word => sourcePath.Contains(word, StringComparison.InvariantCultureIgnoreCase)))
+            if (pathSettings.WhitelistedWordsAsArray.Length != 0 && !pathSettings.WhitelistedWordsAsArray.Any(word => sourcePath.Contains(word, StringComparison.InvariantCultureIgnoreCase)))
             {
                 _logger.LogInformation("No whitelisted word was found in the path '{FullPath}'. No further processing is done", sourcePath);
                 return;
             }
             
-            if (pathSettings.BlacklistedWords.Any(word => sourcePath.Contains(word, StringComparison.InvariantCultureIgnoreCase)))
+            if (pathSettings.BlacklistedWordsAsArray.Any(word => sourcePath.Contains(word, StringComparison.InvariantCultureIgnoreCase)))
             {
                 _logger.LogInformation("A blacklisted word was found in the path '{FullPath}'. No further processing is done", sourcePath);
                 return;
             }
                 
-            await ExtractAndMoveAsync(sourcePath, GenerateDestinationPath(sourcePath, pathSettings), generalSettings, cancellationToken);
+            await ExtractAndMoveAsync(sourcePath, GenerateDestinationPath(sourcePath, pathSettings), coreSettings, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -129,20 +129,20 @@ public class Worker : BackgroundService
                 case "UHD":
                 case "2160P":
                 case "4K":
-                    destinationDir = isTvShow ? $"{(!string.IsNullOrWhiteSpace(paths.TvShows.Res2160P) ? paths.TvShows.Res2160P : paths.TvShows.ResDefault)}/{tvShowName}/{tvShowSeason}" : !string.IsNullOrWhiteSpace(paths.Movies.Res2160P) ? paths.Movies.Res2160P : paths.Movies.ResDefault;
+                    destinationDir = isTvShow ? $"{(!string.IsNullOrWhiteSpace(paths.Tv.Res2160P) ? paths.Tv.Res2160P : paths.Tv.Default)}/{tvShowName}/{tvShowSeason}" : !string.IsNullOrWhiteSpace(paths.Movies.Res2160P) ? paths.Movies.Res2160P : paths.Movies.Default;
                     validDestinationDir = true;
                     break;
                 case "1080P":
-                    destinationDir = isTvShow ? $"{(!string.IsNullOrWhiteSpace(paths.TvShows.Res1080P) ? paths.TvShows.Res1080P : paths.TvShows.ResDefault)}/{tvShowName}/{tvShowSeason}" : !string.IsNullOrWhiteSpace(paths.Movies.Res1080P) ? paths.Movies.Res1080P : paths.Movies.ResDefault;
+                    destinationDir = isTvShow ? $"{(!string.IsNullOrWhiteSpace(paths.Tv.Res1080P) ? paths.Tv.Res1080P : paths.Tv.Default)}/{tvShowName}/{tvShowSeason}" : !string.IsNullOrWhiteSpace(paths.Movies.Res1080P) ? paths.Movies.Res1080P : paths.Movies.Default;
                     validDestinationDir = true;
                     break;
                 case "720P":
-                    destinationDir = isTvShow ? $"{(!string.IsNullOrWhiteSpace(paths.TvShows.Res720P) ? paths.TvShows.Res720P : paths.TvShows.ResDefault)}/{tvShowName}/{tvShowSeason}" : !string.IsNullOrWhiteSpace(paths.Movies.Res720P) ? paths.Movies.Res720P : paths.Movies.ResDefault;
+                    destinationDir = isTvShow ? $"{(!string.IsNullOrWhiteSpace(paths.Tv.Res720P) ? paths.Tv.Res720P : paths.Tv.Default)}/{tvShowName}/{tvShowSeason}" : !string.IsNullOrWhiteSpace(paths.Movies.Res720P) ? paths.Movies.Res720P : paths.Movies.Default;
                     validDestinationDir = true;
                     break;
                 default:
                     destinationDir = validDestinationDir ? destinationDir :
-                        isTvShow ? $"{paths.TvShows.ResDefault}/{tvShowName}/{tvShowSeason}" : paths.Movies.ResDefault ?? paths.Movies.ResDefault;
+                        isTvShow ? $"{paths.Tv.Default}/{tvShowName}/{tvShowSeason}" : paths.Movies.Default ?? paths.Movies.Default;
                     break;
             }
 
@@ -152,9 +152,9 @@ public class Worker : BackgroundService
         return destinationDir;
     }
 
-    private async Task ExtractAndMoveAsync(string sourcePath, string destinationDir, General generalSettings, CancellationToken cancellationToken)
+    private async Task ExtractAndMoveAsync(string sourcePath, string destinationDir, Core coreSettings, CancellationToken cancellationToken)
     {
-        var fileCopyDelaySeconds = generalSettings.FileCopyDelaySeconds;
+        var fileCopyDelaySeconds = coreSettings.CopyDelay;
             
         _logger.LogInformation("Ensuring directory exist '{DestinationDir}'", destinationDir);
         Directory.CreateDirectory(destinationDir);

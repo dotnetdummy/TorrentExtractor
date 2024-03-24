@@ -3,7 +3,12 @@
     "TorrentExtractor": {
       "commandName": "Project",
       "environmentVariables": {
-        "DOTNET_ENVIRONMENT": "Development"
+        "DOTNET_ENVIRONMENT": "Development",
+        "Core__CopyDelay": "30",
+        "PATHS__SOURCE": "/wabba/labba",
+        "PATHS__WHITELISTEDWORDS": "wabba,labba,ding,dong",
+        "PATHS__MOVIES__DEFAULT": "/wabba/labba/ding",
+        "PATHS__TV__DEFAULT": "/wabba/labba/dong"
       }
     }
   }
