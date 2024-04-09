@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Concurrent;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -54,6 +53,13 @@ public class Worker : BackgroundService
             // Add event handlers.
             watcher.Created += async (_, e) =>
             {
+                await Task.Delay(1000, cancellationToken);
+
+                if (!File.Exists(e.FullPath) && !Directory.Exists(e.FullPath))
+                {
+                    return;
+                }
+
                 await ProcessAsync(e.FullPath, coreSettings, pathSettings, cancellationToken);
             };
 
@@ -70,34 +76,6 @@ public class Worker : BackgroundService
         {
             _logger.LogCritical(ex, "A critical error occurred");
             throw;
-        }
-    }
-
-    private async Task AwaitFileCopy(
-        string sourcePath,
-        long previousFileLength,
-        Core coreSettings,
-        CancellationToken cancellationToken
-    )
-    {
-        if (cancellationToken.IsCancellationRequested)
-        {
-            throw new TaskCanceledException();
-        }
-
-        var interval = coreSettings.FileCompareInterval;
-        var fileLength = new FileInfo(sourcePath).Length;
-
-        if (fileLength != previousFileLength)
-        {
-            _logger.LogInformation(
-                "File '{SourcePath}' is still being copied. Waiting for {Interval} seconds...",
-                sourcePath,
-                interval
-            );
-
-            await Task.Delay(TimeSpan.FromSeconds(interval), cancellationToken);
-            await AwaitFileCopy(sourcePath, fileLength, coreSettings, cancellationToken);
         }
     }
 
@@ -147,6 +125,34 @@ public class Worker : BackgroundService
         catch (Exception ex)
         {
             _logger.LogError(ex, "An error occurred when processing '{SourcePath}'", sourcePath);
+        }
+    }
+
+    private async Task AwaitFileCopy(
+        string sourcePath,
+        long previousFileLength,
+        Core coreSettings,
+        CancellationToken cancellationToken
+    )
+    {
+        if (cancellationToken.IsCancellationRequested)
+        {
+            throw new TaskCanceledException();
+        }
+
+        var interval = coreSettings.FileCompareInterval;
+        var fileLength = new FileInfo(sourcePath).Length;
+
+        if (fileLength != previousFileLength)
+        {
+            _logger.LogInformation(
+                "File '{SourcePath}' is still being copied. Waiting for {Interval} seconds...",
+                sourcePath,
+                interval
+            );
+
+            await Task.Delay(TimeSpan.FromSeconds(interval), cancellationToken);
+            await AwaitFileCopy(sourcePath, fileLength, coreSettings, cancellationToken);
         }
     }
 
@@ -228,16 +234,6 @@ public class Worker : BackgroundService
     {
         _logger.LogInformation("Ensuring directory exist '{DestinationDir}'", destinationDir);
         Directory.CreateDirectory(destinationDir);
-
-        // Sometimes a "deletion" triggers an add just before the files are removed.. just double check again to get rid of exceptions
-        if (!File.Exists(sourcePath) && !Directory.Exists(sourcePath))
-        {
-            _logger.LogInformation(
-                "Oops! apparently it wasn't a new file being added, rather Transmission removing old ones. Skipping..."
-            );
-            return;
-        }
-
         await ExtractAndMoveRecursionAsync(sourcePath, destinationDir);
     }
 
