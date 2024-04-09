@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 
 namespace TorrentExtractor;
 
+// ReSharper disable once ClassNeverInstantiated.Global
 public class Program
 {
     public static void Main(string[] args)
@@ -13,20 +14,24 @@ public class Program
 
     private static IHostBuilder CreateHostBuilder(string[] args) =>
         Host.CreateDefaultBuilder(args)
-            .ConfigureServices((hostContext, services) =>
-            {
-                services.AddLogging(opt =>
+            .ConfigureServices(
+                (hostContext, services) =>
                 {
-                    opt.AddSimpleConsole(options =>
+                    services.AddLogging(opt =>
                     {
-                        options.IncludeScopes = true;
-                        options.SingleLine = true;
-                        options.TimestampFormat = "[yyyy-MM-dd HH:mm:ss] ";
+                        opt.AddSimpleConsole(options =>
+                        {
+                            options.IncludeScopes = true;
+                            options.SingleLine = true;
+                            options.TimestampFormat = "[yyyy-MM-dd HH:mm:ss] ";
+                        });
                     });
-                });
-                services.AddHostedService<Worker>();
-                services.AddOptions();
-                services.Configure<Settings.Core>(hostContext.Configuration.GetSection("Core"));
-                services.Configure<Settings.Paths>(hostContext.Configuration.GetSection("Paths"));
-            });
+                    services.AddHostedService<Worker>();
+                    services.AddOptions();
+                    services.Configure<Settings.Core>(hostContext.Configuration.GetSection("Core"));
+                    services.Configure<Settings.Paths>(
+                        hostContext.Configuration.GetSection("Paths")
+                    );
+                }
+            );
 }

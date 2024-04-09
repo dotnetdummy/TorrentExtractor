@@ -4,7 +4,7 @@
       "commandName": "Project",
       "environmentVariables": {
         "DOTNET_ENVIRONMENT": "Development",
-        "Core__CopyDelay": "30",
+        "CORE__FILECOMPAREINTERVAL": "5",
         "PATHS__SOURCE": "/wabba/labba",
         "PATHS__WHITELISTEDWORDS": "wabba,labba,ding,dong",
         "PATHS__MOVIES__DEFAULT": "/wabba/labba/ding",

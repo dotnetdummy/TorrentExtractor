@@ -6,19 +6,21 @@ namespace TorrentExtractor.Settings
     public class Core
     {
         /// <summary>
-        /// Delay in seconds before copying the file from the source folder. Default is 60 seconds. Must be over 0.
+        /// To determine if the file has been fully copied, the length of the file is compared between a given interval. If the lengths are equal, then the copy process starts. Default is 15 seconds. Must be 1 or greater.
         /// </summary>
-        public int CopyDelay { get; set; } = 60;
+        public int FileCompareInterval { get; set; } = 15;
 
         public void Validate()
         {
-            if(CopyDelay <= 0)
-                throw new ValidationException($"A valid {nameof(CopyDelay)} is required!");
+            if (FileCompareInterval < 1)
+                throw new ValidationException(
+                    $"A valid {nameof(FileCompareInterval)} is required!"
+                );
         }
-        
+
         public override string ToString()
         {
-            return $"CopyDelay={CopyDelay}";
+            return $"{nameof(FileCompareInterval)}={FileCompareInterval}";
         }
     }
 }
