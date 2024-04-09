@@ -49,25 +49,12 @@ public class Worker : BackgroundService
 
             // Create a new FileSystemWatcher and set its properties.
             // ReSharper disable once UsingStatementResourceInitialization
-            using var watcher = new FileSystemWatcher
-            {
-                Path = pathSettings.Source,
-                NotifyFilter = NotifyFilters.FileName | NotifyFilters.Size
-            };
-
-            var processing = new ConcurrentBag<string>();
+            using var watcher = new FileSystemWatcher { Path = pathSettings.Source };
 
             // Add event handlers.
             watcher.Created += async (_, e) =>
             {
-                if (processing.Contains(e.FullPath))
-                    return;
-
-                processing.Add(e.FullPath);
-
                 await ProcessAsync(e.FullPath, coreSettings, pathSettings, cancellationToken);
-
-                processing.TryTake(out var _);
             };
 
             // Begin watching.
