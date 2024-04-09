@@ -1,4 +1,4 @@
-# TorrentExtractor
+# TorrentExtractor [![Latest](https://github.com/dotnetdummy/TorrentExtractor/actions/workflows/auto-deploy-to-docker-hub.yml/badge.svg)](https://github.com/dotnetdummy/TorrentExtractor/actions/workflows/auto-deploy-to-docker-hub.yml)
 
 Intended to be run as a service, watching for downloaded files and extracting/moving them to a desired destination. Can also be run as a [docker image](https://hub.docker.com/r/dotnetdummy/torrent-extractor).
 
