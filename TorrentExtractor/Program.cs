@@ -1,6 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 
 namespace TorrentExtractor;
 
@@ -19,12 +18,7 @@ public class Program
                 {
                     services.AddLogging(opt =>
                     {
-                        opt.AddSimpleConsole(options =>
-                        {
-                            options.IncludeScopes = true;
-                            options.SingleLine = true;
-                            options.TimestampFormat = "[yyyy-MM-dd HH:mm:ss] ";
-                        });
+                        opt.AddCustomFormatter();
                     });
                     services.AddHostedService<Worker>();
                     services.AddOptions();

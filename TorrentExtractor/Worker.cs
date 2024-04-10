@@ -66,6 +66,8 @@ public class Worker : BackgroundService
             // Begin watching.
             watcher.EnableRaisingEvents = true;
 
+            _logger.LogInformation("Watching directory '{SourcePath}'", pathSettings.Source);
+
             // Watch until cancellation is requested
             while (!cancellationToken.IsCancellationRequested)
             {
@@ -75,7 +77,7 @@ public class Worker : BackgroundService
         catch (Exception ex) when (ex is not TaskCanceledException)
         {
             _logger.LogCritical(ex, "A critical error occurred");
-            throw;
+            Environment.Exit(0);
         }
     }
 
