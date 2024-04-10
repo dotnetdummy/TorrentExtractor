@@ -130,7 +130,7 @@ public class Worker : BackgroundService
 
     private async Task AwaitFileCopy(
         string sourcePath,
-        long previousFileLength,
+        long previousLength,
         Core coreSettings,
         CancellationToken cancellationToken
     )
@@ -140,10 +140,20 @@ public class Worker : BackgroundService
             throw new TaskCanceledException();
         }
 
-        var interval = coreSettings.FileCompareInterval;
-        var fileLength = new FileInfo(sourcePath).Length;
+        if (
+            string.IsNullOrWhiteSpace(sourcePath)
+            || !File.Exists(sourcePath) && !Directory.Exists(sourcePath)
+        )
+        {
+            throw new FileNotFoundException("Source path is not found!", sourcePath);
+        }
 
-        if (fileLength != previousFileLength)
+        var interval = coreSettings.FileCompareInterval;
+        var length = Directory.Exists(sourcePath)
+            ? new DirectoryInfo(sourcePath).Length()
+            : new FileInfo(sourcePath).Length;
+
+        if (length != previousLength)
         {
             _logger.LogInformation(
                 "File '{SourcePath}' is still being copied. Waiting for {Interval} seconds...",
@@ -152,7 +162,7 @@ public class Worker : BackgroundService
             );
 
             await Task.Delay(TimeSpan.FromSeconds(interval), cancellationToken);
-            await AwaitFileCopy(sourcePath, fileLength, coreSettings, cancellationToken);
+            await AwaitFileCopy(sourcePath, length, coreSettings, cancellationToken);
         }
     }
 
