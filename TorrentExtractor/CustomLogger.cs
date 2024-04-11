@@ -13,6 +13,14 @@ public static class ConsoleLoggerExtensions
         builder
             .AddConsole(options => options.FormatterName = nameof(CustomLoggingFormatter))
             .AddConsoleFormatter<CustomLoggingFormatter, ConsoleFormatterOptions>();
+
+    public static ILoggingBuilder AddCustomFormatter(
+        this ILoggingBuilder builder,
+        Action<ConsoleFormatterOptions> configure
+    ) =>
+        builder
+            .AddConsole(options => options.FormatterName = nameof(CustomLoggingFormatter))
+            .AddConsoleFormatter<CustomLoggingFormatter, ConsoleFormatterOptions>(configure);
 }
 
 public sealed class CustomLoggingFormatter : ConsoleFormatter, IDisposable
@@ -43,12 +51,13 @@ public sealed class CustomLoggingFormatter : ConsoleFormatter, IDisposable
             return;
         }
 
+        var tsFormat = _formatterOptions.TimestampFormat ?? "[yyyy-MM-dd HH:mm:ss.ffffffzzzz]";
+
         textWriter.WriteLine(
-            $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {GetLogLevelString(logEntry.LogLevel)}: {message}{
-                (logEntry.Exception != null ? $". {logEntry.Exception?.GetType()}: {logEntry.Exception?.Message}" : "")}".Replace(
-                "..",
-                "."
-            )
+            $"{(tsFormat == "" ? "" : DateTime.UtcNow.ToString(tsFormat))} {GetLogLevelString(logEntry.LogLevel)}: {message}{
+                (logEntry.Exception != null ? $". {logEntry.Exception?.GetType()}: {logEntry.Exception?.Message}" : "")}"
+                .Replace("..", ".")
+                .Trim()
         );
     }
 

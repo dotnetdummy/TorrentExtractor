@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
@@ -18,7 +19,10 @@ public class Program
                 {
                     services.AddLogging(opt =>
                     {
-                        opt.AddCustomFormatter();
+                        var format = hostContext.Configuration.GetValue<string>(
+                            "Logging:TimestampFormat"
+                        );
+                        opt.AddCustomFormatter(conf => conf.TimestampFormat = format);
                     });
                     services.AddHostedService<Worker>();
                     services.AddOptions();

@@ -18,6 +18,7 @@ dotnet publish -c Release -r linux-x64 /p:PublishSingleFile=true /p:PublishTrimm
 
 ## Environment variables
 
+- `LOGGING__TIMESTAMPFORMAT`: Timestamp format for logs. Default is `[yyyy-MM-dd HH:mm:ss.ffffffzzzz]`.
 - `CORE__FILECOMPAREINTERVAL`: To determine if the file has been fully copied, the length of the file is compared between a given interval. If the lengths are equal, then the copy process starts. Default is 15 seconds. Must be 1 or greater.
 - `PATHS__SOURCE`: **(required)** Source directory to watch for new files.
 - `PATHS__WHITELISTEDWORDS`: Comma separated list of words to whitelist files in source directory. If not set, all files will be processed.
