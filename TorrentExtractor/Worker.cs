@@ -17,6 +17,26 @@ namespace TorrentExtractor;
 
 public class Worker : BackgroundService
 {
+    private readonly string[] _whitelistedWords =
+    {
+        "2160p",
+        "1080p",
+        "720p",
+        "Webrip",
+        "BluRay",
+        "S0",
+        "Season",
+        "x264",
+        "x265",
+        "h264",
+        "H.265",
+        "h.264",
+        "hevc",
+        ".mkv",
+        ".avi",
+        ".mp4"
+    };
+
     private readonly ILogger<Worker> _logger;
     private readonly IOptions<Core> _coreSettings;
     private readonly IOptions<Paths> _pathSettings;
@@ -91,8 +111,7 @@ public class Worker : BackgroundService
         try
         {
             if (
-                pathSettings.WhitelistedWordsAsArray.Length != 0
-                && !pathSettings.WhitelistedWordsAsArray.Any(word =>
+                !_whitelistedWords.Any(word =>
                     sourcePath.Contains(word, StringComparison.InvariantCultureIgnoreCase)
                 )
             )
