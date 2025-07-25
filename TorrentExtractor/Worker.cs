@@ -1,7 +1,6 @@
 using System;
 using System.IO;
 using System.Linq;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Hosting;
@@ -18,7 +17,7 @@ namespace TorrentExtractor;
 public class Worker : BackgroundService
 {
     private readonly string[] _whitelistedWords =
-    {
+    [
         "2160p",
         "1080p",
         "720p",
@@ -35,7 +34,7 @@ public class Worker : BackgroundService
         ".mkv",
         ".avi",
         ".mp4"
-    };
+    ];
 
     private readonly ILogger<Worker> _logger;
     private readonly IOptions<Core> _coreSettings;
@@ -140,7 +139,7 @@ public class Worker : BackgroundService
 
             await ExtractAndMoveAsync(
                 sourcePath,
-                GenerateDestinationPath(sourcePath, pathSettings)
+                PathBuilder.GenerateDestinationPath(sourcePath, pathSettings)
             );
         }
         catch (Exception ex)
@@ -185,80 +184,6 @@ public class Worker : BackgroundService
             await Task.Delay(TimeSpan.FromSeconds(interval), cancellationToken);
             await AwaitFileCopy(sourcePath, length, coreSettings, cancellationToken);
         }
-    }
-
-    private static string GenerateDestinationPath(string sourcePath, Paths paths)
-    {
-        var fileNameParts = Path.GetFileName(sourcePath)
-            .Replace(" ", ".")
-            .Split('.', StringSplitOptions.RemoveEmptyEntries);
-
-        var validDestinationDir = false;
-        var isTvShow = false;
-        var tvShowSeason = string.Empty;
-        var tvShowName = string.Empty;
-        var destinationDir = string.Empty;
-        var nameBuilder = new StringBuilder();
-
-        foreach (var fileNamePart in fileNameParts)
-        {
-            var seasonPrefix = new[] { "S0", "S1", "S2", "S3", "S4", "S5" };
-            if (
-                seasonPrefix.Any(prefix =>
-                    fileNamePart.StartsWith(prefix, StringComparison.InvariantCultureIgnoreCase)
-                )
-            )
-            {
-                isTvShow = true;
-                tvShowSeason = fileNamePart
-                    .Split('E', StringSplitOptions.RemoveEmptyEntries)[0]
-                    .Split('e', StringSplitOptions.RemoveEmptyEntries)[0]
-                    .Split("EP", StringSplitOptions.RemoveEmptyEntries)[0]
-                    .Split("ep", StringSplitOptions.RemoveEmptyEntries)[0];
-                tvShowName = nameBuilder.ToString();
-            }
-
-            switch (fileNamePart.ToUpper())
-            {
-                case "UHD":
-                case "2160P":
-                case "4K":
-                    destinationDir = isTvShow
-                        ? $"{(!string.IsNullOrWhiteSpace(paths.Tv.Res2160P) ? paths.Tv.Res2160P : paths.Tv.Default)}/{tvShowName}/{tvShowSeason}"
-                        : !string.IsNullOrWhiteSpace(paths.Movies.Res2160P)
-                            ? paths.Movies.Res2160P
-                            : paths.Movies.Default;
-                    validDestinationDir = true;
-                    break;
-                case "1080P":
-                    destinationDir = isTvShow
-                        ? $"{(!string.IsNullOrWhiteSpace(paths.Tv.Res1080P) ? paths.Tv.Res1080P : paths.Tv.Default)}/{tvShowName}/{tvShowSeason}"
-                        : !string.IsNullOrWhiteSpace(paths.Movies.Res1080P)
-                            ? paths.Movies.Res1080P
-                            : paths.Movies.Default;
-                    validDestinationDir = true;
-                    break;
-                case "720P":
-                    destinationDir = isTvShow
-                        ? $"{(!string.IsNullOrWhiteSpace(paths.Tv.Res720P) ? paths.Tv.Res720P : paths.Tv.Default)}/{tvShowName}/{tvShowSeason}"
-                        : !string.IsNullOrWhiteSpace(paths.Movies.Res720P)
-                            ? paths.Movies.Res720P
-                            : paths.Movies.Default;
-                    validDestinationDir = true;
-                    break;
-                default:
-                    destinationDir = validDestinationDir
-                        ? destinationDir
-                        : isTvShow
-                            ? $"{paths.Tv.Default}/{tvShowName}/{tvShowSeason}"
-                            : paths.Movies.Default ?? paths.Movies.Default;
-                    break;
-            }
-
-            nameBuilder.Append($"{(nameBuilder.Length == 0 ? "" : " ")}{fileNamePart}");
-        }
-
-        return destinationDir;
     }
 
     private async Task ExtractAndMoveAsync(string sourcePath, string destinationDir)
