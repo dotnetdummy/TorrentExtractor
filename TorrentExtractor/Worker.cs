@@ -139,7 +139,8 @@ public class Worker : BackgroundService
 
             await ExtractAndMoveAsync(
                 sourcePath,
-                PathBuilder.GenerateDestinationPath(sourcePath, pathSettings)
+                PathBuilder.GenerateDestinationPath(sourcePath, pathSettings),
+                cancellationToken
             );
         }
         catch (Exception ex)
@@ -186,14 +187,22 @@ public class Worker : BackgroundService
         }
     }
 
-    private async Task ExtractAndMoveAsync(string sourcePath, string destinationDir)
+    private async Task ExtractAndMoveAsync(
+        string sourcePath,
+        string destinationDir,
+        CancellationToken cancellationToken
+    )
     {
         _logger.LogInformation("Ensuring directory exist '{DestinationDir}'", destinationDir);
         Directory.CreateDirectory(destinationDir);
-        await ExtractAndMoveRecursionAsync(sourcePath, destinationDir);
+        await ExtractAndMoveRecursionAsync(sourcePath, destinationDir, cancellationToken);
     }
 
-    private async Task ExtractAndMoveRecursionAsync(string sourcePath, string destinationDir)
+    private async Task ExtractAndMoveRecursionAsync(
+        string sourcePath,
+        string destinationDir,
+        CancellationToken cancellationToken
+    )
     {
         if (string.IsNullOrWhiteSpace(sourcePath))
         {
@@ -205,11 +214,11 @@ public class Worker : BackgroundService
         {
             foreach (var dir in Directory.GetDirectories(sourcePath))
             {
-                await ExtractAndMoveRecursionAsync(dir, destinationDir);
+                await ExtractAndMoveRecursionAsync(dir, destinationDir, cancellationToken);
             }
             foreach (var file in Directory.GetFiles(sourcePath))
             {
-                await ExtractAndMoveRecursionAsync(file, destinationDir);
+                await ExtractAndMoveRecursionAsync(file, destinationDir, cancellationToken);
             }
 
             return;
@@ -236,7 +245,58 @@ public class Worker : BackgroundService
                     sourcePath,
                     destinationPath
                 );
-                File.Copy(sourcePath, destinationPath, true);
+
+                await CopyFileAsync(sourcePath, destinationPath, cancellationToken);
+
+                var sourceLength = Directory.Exists(sourcePath)
+                    ? new DirectoryInfo(sourcePath).Length()
+                    : new FileInfo(sourcePath).Length;
+
+                var destinationLength = Directory.Exists(destinationPath)
+                    ? new DirectoryInfo(destinationPath).Length()
+                    : new FileInfo(destinationPath).Length;
+
+                if (sourceLength != destinationLength)
+                {
+                    _logger.LogInformation(
+                        "File length do not match! '{SourcePath}' is {SourceLength} and '{DestinationPath}' is {DestinationLength}. Retrying...",
+                        sourcePath,
+                        sourceLength,
+                        destinationPath,
+                        destinationLength
+                    );
+
+                    await CopyFileAsync(sourcePath, destinationPath, cancellationToken);
+
+                    sourceLength = Directory.Exists(sourcePath)
+                        ? new DirectoryInfo(sourcePath).Length()
+                        : new FileInfo(sourcePath).Length;
+
+                    destinationLength = Directory.Exists(destinationPath)
+                        ? new DirectoryInfo(destinationPath).Length()
+                        : new FileInfo(destinationPath).Length;
+
+                    if (sourceLength != destinationLength)
+                    {
+                        _logger.LogError(
+                            "An error occurred when copying '{SourcePath}' to '{DestinationPath}'. Cleaning up corrupted files...",
+                            sourcePath,
+                            destinationPath
+                        );
+
+                        if (Directory.Exists(destinationPath))
+                        {
+                            Directory.Delete(destinationPath, true);
+                        }
+                        else
+                        {
+                            File.Delete(destinationPath);
+                        }
+
+                        break;
+                    }
+                }
+
                 _logger.LogInformation("Done copying file '{SourcePath}'", sourcePath);
 
                 break;
@@ -315,6 +375,23 @@ public class Worker : BackgroundService
                 _logger.LogDebug("File not supported '{SourcePath}'", sourcePath);
                 break;
             }
+        }
+    }
+
+    private static async Task CopyFileAsync(
+        string src,
+        string dest,
+        CancellationToken cancellationToken
+    )
+    {
+        var buffer = new byte[4096];
+        int numRead;
+
+        await using var reader = File.Open(src, FileMode.Open);
+        await using var writer = File.Create(dest, buffer.Length, FileOptions.Asynchronous);
+        while ((numRead = await reader.ReadAsync(buffer, cancellationToken)) != 0)
+        {
+            await writer.WriteAsync(buffer.AsMemory(0, numRead), cancellationToken);
         }
     }
 }
