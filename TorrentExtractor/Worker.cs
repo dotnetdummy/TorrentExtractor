@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -16,6 +17,8 @@ namespace TorrentExtractor;
 
 public class Worker : BackgroundService
 {
+    private static readonly string[] IncompleteSuffixes = [".!qb", ".part", ".!ut"];
+
     private readonly string[] _whitelistedWords =
     [
         "2160p",
@@ -38,6 +41,13 @@ public class Worker : BackgroundService
         "MP3",
         "ALAC",
         "APE",
+        "WAV",
+        "OGG",
+        "OPUS",
+        "16BIT",
+        "24BIT",
+        "HI-RES",
+        "HIRES",
         ".flac",
         ".mp3",
         ".m4a"
@@ -72,38 +82,95 @@ public class Worker : BackgroundService
             coreSettings.Validate();
             pathSettings.Validate();
 
-            // Create a new FileSystemWatcher and set its properties.
+            await WaitForSourceAsync(pathSettings.Source, cancellationToken);
+
+            using var processLock = new SemaphoreSlim(1, 1);
             // ReSharper disable once UsingStatementResourceInitialization
             using var watcher = new FileSystemWatcher { Path = pathSettings.Source };
 
-            // Add event handlers.
-            watcher.Created += async (_, e) =>
-            {
-                await Task.Delay(1000, cancellationToken);
+            watcher.Created += (_, e) =>
+                _ = HandleWatchEventAsync(
+                    e.FullPath,
+                    processLock,
+                    coreSettings,
+                    pathSettings,
+                    cancellationToken
+                );
+            watcher.Renamed += (_, e) =>
+                _ = HandleWatchEventAsync(
+                    e.FullPath,
+                    processLock,
+                    coreSettings,
+                    pathSettings,
+                    cancellationToken
+                );
+            watcher.Error += (_, e) =>
+                _logger.LogError(e.GetException(), "File system watcher error");
 
-                if (!File.Exists(e.FullPath) && !Directory.Exists(e.FullPath))
-                {
-                    return;
-                }
-
-                await ProcessAsync(e.FullPath, coreSettings, pathSettings, cancellationToken);
-            };
-
-            // Begin watching.
             watcher.EnableRaisingEvents = true;
 
             _logger.LogInformation("Watching directory '{SourcePath}'", pathSettings.Source);
 
-            // Watch until cancellation is requested
             while (!cancellationToken.IsCancellationRequested)
             {
                 await Task.Delay(1000, cancellationToken);
             }
         }
-        catch (Exception ex) when (ex is not TaskCanceledException)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogCritical(ex, "A critical error occurred");
-            Environment.Exit(0);
+            Environment.Exit(1);
+        }
+    }
+
+    private async Task WaitForSourceAsync(string source, CancellationToken cancellationToken)
+    {
+        while (!Directory.Exists(source))
+        {
+            _logger.LogWarning(
+                "Source directory '{SourcePath}' does not exist yet. Waiting...",
+                source
+            );
+            await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
+        }
+    }
+
+    private async Task HandleWatchEventAsync(
+        string sourcePath,
+        SemaphoreSlim processLock,
+        Core coreSettings,
+        Paths pathSettings,
+        CancellationToken cancellationToken
+    )
+    {
+        try
+        {
+            await Task.Delay(1000, cancellationToken);
+
+            if (!File.Exists(sourcePath) && !Directory.Exists(sourcePath))
+            {
+                return;
+            }
+
+            if (IsIncompletePath(sourcePath))
+            {
+                _logger.LogInformation("Skipping incomplete download '{FullPath}'", sourcePath);
+                return;
+            }
+
+            await processLock.WaitAsync(cancellationToken);
+            try
+            {
+                await ProcessAsync(sourcePath, coreSettings, pathSettings, cancellationToken);
+            }
+            finally
+            {
+                processLock.Release();
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(ex, "An error occurred when handling '{SourcePath}'", sourcePath);
         }
     }
 
@@ -151,7 +218,10 @@ public class Worker : BackgroundService
                 return;
             }
 
-            await AwaitFileCopy(sourcePath, -1, coreSettings, cancellationToken);
+            if (!await AwaitFileCopy(sourcePath, coreSettings, cancellationToken))
+            {
+                return;
+            }
 
             await ExtractAndMoveAsync(
                 sourcePath,
@@ -165,41 +235,59 @@ public class Worker : BackgroundService
         }
     }
 
-    private async Task AwaitFileCopy(
+    private async Task<bool> AwaitFileCopy(
         string sourcePath,
-        long previousLength,
         Core coreSettings,
         CancellationToken cancellationToken
     )
     {
-        if (cancellationToken.IsCancellationRequested)
-        {
-            throw new TaskCanceledException();
-        }
+        var interval = TimeSpan.FromSeconds(coreSettings.FileCompareInterval);
+        var deadline = Stopwatch.StartNew();
+        var maxWait = TimeSpan.FromHours(coreSettings.MaxSettleHours);
+        long previousLength = -1;
 
-        if (
-            string.IsNullOrWhiteSpace(sourcePath)
-            || !File.Exists(sourcePath) && !Directory.Exists(sourcePath)
-        )
+        while (true)
         {
-            throw new FileNotFoundException("Source path is not found!", sourcePath);
-        }
+            if (cancellationToken.IsCancellationRequested)
+            {
+                throw new OperationCanceledException(cancellationToken);
+            }
 
-        var interval = coreSettings.FileCompareInterval;
-        var length = Directory.Exists(sourcePath)
-            ? new DirectoryInfo(sourcePath).Length()
-            : new FileInfo(sourcePath).Length;
+            if (
+                string.IsNullOrWhiteSpace(sourcePath)
+                || !File.Exists(sourcePath) && !Directory.Exists(sourcePath)
+            )
+            {
+                throw new FileNotFoundException("Source path is not found!", sourcePath);
+            }
 
-        if (length != previousLength)
-        {
+            var length = Directory.Exists(sourcePath)
+                ? new DirectoryInfo(sourcePath).Length()
+                : new FileInfo(sourcePath).Length;
+
+            if (length == previousLength)
+            {
+                return true;
+            }
+
+            if (deadline.Elapsed >= maxWait)
+            {
+                _logger.LogError(
+                    "File '{SourcePath}' did not settle within {MaxSettleHours} hours. Skipping",
+                    sourcePath,
+                    coreSettings.MaxSettleHours
+                );
+                return false;
+            }
+
             _logger.LogInformation(
                 "File '{SourcePath}' is still being copied. Waiting for {Interval} seconds...",
                 sourcePath,
-                interval
+                coreSettings.FileCompareInterval
             );
 
-            await Task.Delay(TimeSpan.FromSeconds(interval), cancellationToken);
-            await AwaitFileCopy(sourcePath, length, coreSettings, cancellationToken);
+            await Task.Delay(interval, cancellationToken);
+            previousLength = length;
         }
     }
 
@@ -334,7 +422,7 @@ public class Worker : BackgroundService
             {
                 using var archive = RarArchive.OpenArchive(
                     sourcePath,
-                    new ReaderOptions() { LeaveStreamOpen = true }
+                    new ReaderOptions() { LeaveStreamOpen = false }
                 );
 
                 foreach (var entry in archive.Entries)
@@ -406,17 +494,37 @@ public class Worker : BackgroundService
         }
     }
 
+    private static bool IsIncompletePath(string sourcePath)
+    {
+        var name = Path.GetFileName(sourcePath);
+        return IncompleteSuffixes.Any(suffix =>
+            name.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)
+        );
+    }
+
     private static async Task CopyFileAsync(
         string src,
         string dest,
         CancellationToken cancellationToken
     )
     {
-        var buffer = new byte[4096];
+        var buffer = new byte[1024 * 1024];
         int numRead;
 
-        await using var reader = File.Open(src, FileMode.Open);
-        await using var writer = File.Create(dest, buffer.Length, FileOptions.Asynchronous);
+        await using var reader = File.Open(
+            src,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.ReadWrite
+        );
+        await using var writer = new FileStream(
+            dest,
+            FileMode.Create,
+            FileAccess.Write,
+            FileShare.None,
+            buffer.Length,
+            FileOptions.Asynchronous
+        );
         while ((numRead = await reader.ReadAsync(buffer, cancellationToken)) != 0)
         {
             await writer.WriteAsync(buffer.AsMemory(0, numRead), cancellationToken);

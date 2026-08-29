@@ -1,0 +1,10 @@
+.git
+.github
+.vscode
+.idea
+**/bin/
+**/obj/
+TorrentExtractor.Tests
+*.md
+.env
+**/.DS_Store

@@ -8,15 +8,17 @@ Config env vars: [README.md](README.md). Binding and validation: `TorrentExtract
 
 `Worker` is the whole runtime. Order is load-bearing.
 
-1. `FileSystemWatcher.Created` on `Paths.Source` (that directory only, not recursive). Files already there at startup are ignored. After Created, wait 1s, then confirm the path still exists.
-2. Continue only if the path contains a hardcoded whitelist token (`Worker._whitelistedWords`: resolutions, codecs, `S0`/`Season`, video extensions, `FLAC`/`MP3`/`ALAC`/`APE`, audio extensions).
-3. Stop if the path contains a configured blacklist token (`Paths.BlacklistedWords`).
+1. `FileSystemWatcher.Created` and `Renamed` on `Paths.Source` (that directory only, not recursive). Files already there at startup are ignored. After an event, wait 1s, then confirm the path still exists. Incomplete suffixes (`.!qB`, `.part`, `.!ut`) are skipped. Processing is serialized. `watcher.Error` is logged.
+2. Continue only if the path contains a hardcoded whitelist token (`Worker._whitelistedWords`: resolutions, codecs, `S0`/`Season`, video extensions, audio markers including `FLAC`/`WAV`/`OPUS`/`16BIT`/`24BIT`/`HI-RES`, audio extensions).
+3. Stop if the path contains a configured blacklist token (`Paths.BlacklistedWords`, comma-separated and trimmed).
 4. Stop if the path is music (`PathBuilder.IsMusic`) and `Paths.Music` is unset.
-5. **Settle**: poll file or directory size every `Core.FileCompareInterval` seconds until two readings match. Directory size is a recursive sum (`Extensions.Length`).
+5. **Settle**: poll file or directory size every `Core.FileCompareInterval` seconds until two readings match, or until `Core.MaxSettleHours` (default 12). Directory size is a recursive sum (`Extensions.Length`).
 6. **Route** with `PathBuilder.GenerateDestinationPath`.
-7. Recurse the source: copy video (`.mkv`/`.avi`/`.mp4`) and audio (`.flac`/`.mp3`/`.m4a`/`.aac`/`.wav`/`.ogg`/`.opus`/`.wma`/`.ape`/`.aiff`/`.aif`/`.wv`); extract `.rar`/`.zip` into the destination. Other extensions are skipped.
+7. Recurse the source: copy video (`.mkv`/`.avi`/`.mp4`) and audio (`.flac`/`.mp3`/`.m4a`/`.aac`/`.wav`/`.ogg`/`.opus`/`.wma`/`.ape`/`.aiff`/`.aif`/`.wv`); extract `.rar`/`.zip` into the destination. Other extensions are skipped. Copies open the source with `FileShare.ReadWrite` so a seeding client can keep the file open.
 
 Copy mismatch: retry once, then delete the destination and keep the source. Archive directory entries log a warning and are skipped; nested archives inside an extract are not re-processed.
+
+Startup waits until `Paths.Source` exists (TrueNAS mount race). Critical startup failure calls `Environment.Exit(1)`.
 
 ## Route
 
@@ -28,9 +30,9 @@ Music destination is `{musicRoot}/{artist}/{album}`. The folder name is parsed a
 - **Scene hyphen**: split on `-`. First token is artist. Later tokens are album until a metadata token (year, `PROPER`/`WEB`/`CD`/`FLAC`, bit-depth, and similar). `_` and `.` become spaces; casing is unchanged.
 - **Fallback**: `{musicRoot}/{folderName}` when artist or album cannot be parsed.
 
-Video routing turns spaces into dots, then splits the release name on `.`.
+Video routing turns spaces into dots, then splits the release name on `.`. Tokens are scanned in a first pass for TV vs movie and resolution (`[]()` stripped so `[1080p]` matches). Resolution before `Sxx` still routes as TV.
 
-- **TV** when a token starts with `Season` or `S0`–`S5` (`S01` and `S10` match; unpadded `S6` does not). Show name is the tokens before that token. Destination: `{tvRoot}/{show}/{season}`.
+- **TV** when a token is `Sxx` / `SxxEyy` (`S01`, `S10`, `S60`; unpadded `S6` does not match), or `Season`/`Seasons` whose **next** token is a season number or range (`1`, `01`, `1-8`). A bare `Season` in a movie title does not match. Show name is the tokens before the season token, excluding resolution tokens. Destination: `{tvRoot}/{show}/{season}`.
 - Season packs (`Seasons.1-8`) produce an empty season, so the destination is `{tvRoot}/{show}` (`GenerateSeasonPackTvPath`).
 - **Movie** otherwise. Destination is the movies library for that resolution; no title subfolder.
 - Resolution tokens `UHD`/`2160P`/`4K`, `1080P`, `720P` pick the matching path under `Paths.Movies` or `Paths.Tv`. Missing resolution paths fall back to `Default`.
@@ -49,6 +51,6 @@ A routing change is done when every new release-name pattern has a `PathBuilderS
 - Target framework is `net10.0`.
 - Format with the local csharpier tool: `dotnet tool restore`, then `dotnet csharpier .`.
 - `dotnet test` from the repo root.
-- Whitelist is hardcoded in `Worker`. `PATHS__WHITELISTEDWORDS` in launchSettings is unused. Blacklist is `Paths.BlacklistedWords`.
+- Whitelist is hardcoded in `Worker`. Blacklist is `Paths.BlacklistedWords`.
 - `PATHS__MUSIC` is optional. Movies and TV defaults are required.
-- Critical startup failure calls `Environment.Exit(0)`.
+- Critical startup failure calls `Environment.Exit(1)`.

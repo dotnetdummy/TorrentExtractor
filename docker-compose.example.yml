@@ -1,0 +1,16 @@
+services:
+  torrent-extractor:
+    image: dotnetdummy/torrent-extractor:latest
+    restart: unless-stopped
+    environment:
+      CORE__FILECOMPAREINTERVAL: "15"
+      CORE__MAXSETTLEHOURS: "12"
+      PATHS__SOURCE: /downloads
+      PATHS__MOVIES__DEFAULT: /movies
+      PATHS__TV__DEFAULT: /tv
+      PATHS__MUSIC: /music
+    volumes:
+      - /mnt/tank/downloads/complete:/downloads
+      - /mnt/tank/media/movies:/movies
+      - /mnt/tank/media/tv:/tv
+      - /mnt/tank/media/music:/music

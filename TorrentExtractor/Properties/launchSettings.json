@@ -6,7 +6,6 @@
         "DOTNET_ENVIRONMENT": "Development",
         "CORE__FILECOMPAREINTERVAL": "5",
         "PATHS__SOURCE": "/wabba/labba",
-        "PATHS__WHITELISTEDWORDS": "wabba,labba,ding,dong",
         "PATHS__MOVIES__DEFAULT": "/wabba/labba/ding",
         "PATHS__TV__DEFAULT": "/wabba/labba/dong",
         "PATHS__MUSIC": "/wabba/labba/music"

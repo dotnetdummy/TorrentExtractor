@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
-using System.Linq;
 using Microsoft.Extensions.Configuration;
 
 namespace TorrentExtractor.Settings;
@@ -22,7 +21,10 @@ public class Paths
     /// Array of words to blacklist files in source directory. If empty, all files will be processed.
     /// </summary>
     public string[] BlacklistedWordsAsArray =>
-        BlacklistedWords?.Split(',').ToArray() ?? Array.Empty<string>();
+        BlacklistedWords?.Split(
+            ',',
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries
+        ) ?? Array.Empty<string>();
 
     /// <summary>
     /// Contains the paths for movies by resolution.

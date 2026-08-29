@@ -1,7 +1,6 @@
 using System;
 using System.IO;
 using System.Linq;
-using System.Text;
 using System.Text.RegularExpressions;
 using TorrentExtractor.Settings;
 
@@ -77,6 +76,17 @@ public static class PathBuilder
         "KBPS"
     ];
 
+    private static readonly Regex SceneSeasonRegex =
+        new(
+            @"^S(\d{2})",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled
+        );
+
+    private static readonly Regex SeasonNumberRegex = new(@"^\d{1,2}$", RegexOptions.Compiled);
+
+    private static readonly Regex SeasonRangeRegex =
+        new(@"^\d{1,2}-\d{1,2}$", RegexOptions.Compiled);
+
     public static bool IsMusic(string sourcePath)
     {
         var name = Path.GetFileName(sourcePath);
@@ -94,83 +104,112 @@ public static class PathBuilder
             .Replace(" ", ".")
             .Split('.', StringSplitOptions.RemoveEmptyEntries);
 
-        var validDestinationDir = false;
         var isTvShow = false;
         var tvShowSeason = string.Empty;
         var tvShowName = string.Empty;
-        var destinationDir = string.Empty;
-        var nameBuilder = new StringBuilder();
+        string resolution = null;
 
-        foreach (var fileNamePart in fileNameParts)
+        for (var i = 0; i < fileNameParts.Length; i++)
         {
-            var seasonPrefix = new[] { "Season" }.Concat(
-                new[] { "S0", "S1", "S2", "S3", "S4", "S5" }
-            );
-            if (
-                seasonPrefix.Any(prefix =>
-                    fileNamePart.StartsWith(prefix, StringComparison.InvariantCultureIgnoreCase)
-                )
-            )
+            var token = StripBrackets(fileNameParts[i]);
+            var nextToken =
+                i + 1 < fileNameParts.Length ? StripBrackets(fileNameParts[i + 1]) : string.Empty;
+
+            if (!isTvShow && TryReadTvSeason(token, nextToken, out var season))
             {
                 isTvShow = true;
-                tvShowSeason = fileNamePart
-                    .Split("Seasons", StringSplitOptions.RemoveEmptyEntries)
-                    .FirstOrDefault("")
-                    .Split("Season", StringSplitOptions.RemoveEmptyEntries)
-                    .FirstOrDefault("")
-                    .Split('E', StringSplitOptions.RemoveEmptyEntries)
-                    .FirstOrDefault("")
-                    .Split('e', StringSplitOptions.RemoveEmptyEntries)
-                    .FirstOrDefault("")
-                    .Split("EP", StringSplitOptions.RemoveEmptyEntries)
-                    .FirstOrDefault("")
-                    .Split("ep", StringSplitOptions.RemoveEmptyEntries)
-                    .FirstOrDefault("");
-                tvShowName = nameBuilder.ToString();
+                tvShowSeason = season;
+                tvShowName = string.Join(
+                    " ",
+                    fileNameParts
+                        .Take(i)
+                        .Where(part => ParseResolution(StripBrackets(part)) is null)
+                );
             }
 
-            switch (fileNamePart.ToUpper())
-            {
-                case "UHD":
-                case "2160P":
-                case "4K":
-                    destinationDir = isTvShow
-                        ? $"{(!string.IsNullOrWhiteSpace(paths.Tv.Res2160P) ? paths.Tv.Res2160P : paths.Tv.Default)}/{tvShowName}/{tvShowSeason}"
-                        : !string.IsNullOrWhiteSpace(paths.Movies.Res2160P)
-                            ? paths.Movies.Res2160P
-                            : paths.Movies.Default;
-                    validDestinationDir = true;
-                    break;
-                case "1080P":
-                    destinationDir = isTvShow
-                        ? $"{(!string.IsNullOrWhiteSpace(paths.Tv.Res1080P) ? paths.Tv.Res1080P : paths.Tv.Default)}/{tvShowName}/{tvShowSeason}"
-                        : !string.IsNullOrWhiteSpace(paths.Movies.Res1080P)
-                            ? paths.Movies.Res1080P
-                            : paths.Movies.Default;
-                    validDestinationDir = true;
-                    break;
-                case "720P":
-                    destinationDir = isTvShow
-                        ? $"{(!string.IsNullOrWhiteSpace(paths.Tv.Res720P) ? paths.Tv.Res720P : paths.Tv.Default)}/{tvShowName}/{tvShowSeason}"
-                        : !string.IsNullOrWhiteSpace(paths.Movies.Res720P)
-                            ? paths.Movies.Res720P
-                            : paths.Movies.Default;
-                    validDestinationDir = true;
-                    break;
-                default:
-                    destinationDir = validDestinationDir
-                        ? destinationDir
-                        : isTvShow
-                            ? $"{paths.Tv.Default}/{tvShowName}/{tvShowSeason}"
-                            : paths.Movies.Default ?? paths.Movies.Default;
-                    break;
-            }
-
-            nameBuilder.Append($"{(nameBuilder.Length == 0 ? "" : " ")}{fileNamePart}");
+            resolution ??= ParseResolution(token);
         }
 
-        return destinationDir.TrimEnd('/');
+        return BuildVideoDestination(paths, isTvShow, tvShowName, tvShowSeason, resolution);
     }
+
+    private static string BuildVideoDestination(
+        Paths paths,
+        bool isTvShow,
+        string tvShowName,
+        string tvShowSeason,
+        string resolution
+    )
+    {
+        if (isTvShow)
+        {
+            var tvRoot = resolution switch
+            {
+                "2160" => FirstNonEmpty(paths.Tv.Res2160P, paths.Tv.Default),
+                "1080" => FirstNonEmpty(paths.Tv.Res1080P, paths.Tv.Default),
+                "720" => FirstNonEmpty(paths.Tv.Res720P, paths.Tv.Default),
+                _ => paths.Tv.Default
+            };
+
+            return $"{tvRoot}/{tvShowName}/{tvShowSeason}".TrimEnd('/');
+        }
+
+        return resolution switch
+        {
+            "2160" => FirstNonEmpty(paths.Movies.Res2160P, paths.Movies.Default),
+            "1080" => FirstNonEmpty(paths.Movies.Res1080P, paths.Movies.Default),
+            "720" => FirstNonEmpty(paths.Movies.Res720P, paths.Movies.Default),
+            _ => paths.Movies.Default
+        };
+    }
+
+    private static bool TryReadTvSeason(string token, string nextToken, out string season)
+    {
+        season = string.Empty;
+
+        var sceneMatch = SceneSeasonRegex.Match(token);
+        if (sceneMatch.Success)
+        {
+            season = $"S{sceneMatch.Groups[1].Value}";
+            return true;
+        }
+
+        if (
+            !token.Equals("Season", StringComparison.OrdinalIgnoreCase)
+            && !token.Equals("Seasons", StringComparison.OrdinalIgnoreCase)
+        )
+        {
+            return false;
+        }
+
+        if (SeasonRangeRegex.IsMatch(nextToken))
+        {
+            season = string.Empty;
+            return true;
+        }
+
+        if (SeasonNumberRegex.IsMatch(nextToken))
+        {
+            season = $"S{int.Parse(nextToken):D2}";
+            return true;
+        }
+
+        return false;
+    }
+
+    private static string ParseResolution(string token) =>
+        token.ToUpperInvariant() switch
+        {
+            "UHD" or "2160P" or "4K" => "2160",
+            "1080P" => "1080",
+            "720P" => "720",
+            _ => null
+        };
+
+    private static string StripBrackets(string token) => token.Trim().Trim('[', ']', '(', ')');
+
+    private static string FirstNonEmpty(string preferred, string fallback) =>
+        !string.IsNullOrWhiteSpace(preferred) ? preferred : fallback;
 
     private static string GenerateMusicPath(string sourcePath, Paths paths)
     {
