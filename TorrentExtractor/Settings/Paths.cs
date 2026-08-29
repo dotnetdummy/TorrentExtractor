@@ -34,6 +34,11 @@ public class Paths
     /// </summary>
     public PathsByResolution Tv { get; set; } = new();
 
+    /// <summary>
+    /// (optional) Destination directory for music. If not set, music releases are skipped.
+    /// </summary>
+    public string Music { get; set; }
+
     public void Validate()
     {
         if (string.IsNullOrWhiteSpace(Source) || Source.Length < 3)
@@ -49,6 +54,11 @@ public class Paths
         if (string.IsNullOrWhiteSpace(Tv?.Default))
             throw new ValidationException(
                 $"A valid {nameof(Tv)}__{nameof(Tv.Default)} is required!"
+            );
+
+        if (!string.IsNullOrWhiteSpace(Music) && Music.Length < 3)
+            throw new ValidationException(
+                $"A valid {nameof(Music)} with at least 3 chars is required when set!"
             );
     }
 
@@ -77,6 +87,9 @@ public class Paths
             info.Add($"{nameof(Tv)}__{nameof(Tv.Res720P)}={Tv.Res720P}");
 
         info.Add($"{nameof(Tv)}__{nameof(Tv.Default)}={Tv?.Default}");
+
+        if (!string.IsNullOrWhiteSpace(Music))
+            info.Add($"{nameof(Music)}={Music}");
 
         return string.Join(", ", info);
     }

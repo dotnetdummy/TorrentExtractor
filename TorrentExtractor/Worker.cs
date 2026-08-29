@@ -33,7 +33,14 @@ public class Worker : BackgroundService
         "hevc",
         ".mkv",
         ".avi",
-        ".mp4"
+        ".mp4",
+        "FLAC",
+        "MP3",
+        "ALAC",
+        "APE",
+        ".flac",
+        ".mp3",
+        ".m4a"
     ];
 
     private readonly ILogger<Worker> _logger;
@@ -135,6 +142,15 @@ public class Worker : BackgroundService
                 return;
             }
 
+            if (PathBuilder.IsMusic(sourcePath) && string.IsNullOrWhiteSpace(pathSettings.Music))
+            {
+                _logger.LogInformation(
+                    "Music path is not configured. Skipping '{FullPath}'",
+                    sourcePath
+                );
+                return;
+            }
+
             await AwaitFileCopy(sourcePath, -1, coreSettings, cancellationToken);
 
             await ExtractAndMoveAsync(
@@ -224,11 +240,23 @@ public class Worker : BackgroundService
             return;
         }
 
-        switch (Path.GetExtension(sourcePath))
+        switch (Path.GetExtension(sourcePath).ToLowerInvariant())
         {
             case ".mkv":
             case ".avi":
             case ".mp4":
+            case ".flac":
+            case ".mp3":
+            case ".m4a":
+            case ".aac":
+            case ".wav":
+            case ".ogg":
+            case ".opus":
+            case ".wma":
+            case ".ape":
+            case ".aiff":
+            case ".aif":
+            case ".wv":
             {
                 var filename = Path.GetFileName(sourcePath);
 

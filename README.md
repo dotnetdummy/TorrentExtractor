@@ -30,3 +30,4 @@ dotnet publish -c Release -r linux-x64 /p:PublishSingleFile=true /p:PublishTrimm
 - `PATHS__TV__2160P`: 2160P destination directory for tv shows.
 - `PATHS__TV__1080P`: 1080P destination directory for tv shows.
 - `PATHS__TV__720P`: 720P destination directory for tv shows.
+- `PATHS__MUSIC`: Destination directory for music. If not set, music releases are skipped.
