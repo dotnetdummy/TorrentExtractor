@@ -592,3 +592,6 @@ healthchecksdb
 MigrationBackup/
 
 # End of https://www.gitignore.io/api/osx,rider,linux,windows,sublimetext,visualstudio,jetbrains+all,visualstudiocode
+
+# Custom
+.env
