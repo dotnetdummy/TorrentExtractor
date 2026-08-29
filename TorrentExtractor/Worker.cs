@@ -304,7 +304,7 @@ public class Worker : BackgroundService
 
             case ".rar":
             {
-                using var archive = RarArchive.Open(
+                using var archive = RarArchive.OpenArchive(
                     sourcePath,
                     new ReaderOptions() { LeaveStreamOpen = true }
                 );
@@ -339,7 +339,7 @@ public class Worker : BackgroundService
             case ".zip":
             {
                 await using var stream = File.OpenRead(sourcePath);
-                var reader = ReaderFactory.Open(stream);
+                var reader = ReaderFactory.OpenReader(stream);
 
                 while (reader.MoveToNextEntry())
                 {
