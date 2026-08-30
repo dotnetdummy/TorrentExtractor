@@ -24,7 +24,7 @@ qBittorrent and similar clients often finish a download by renaming `*.!qB` / `*
 
 See [docker-compose.example.yml](docker-compose.example.yml) for a typical volume layout.
 
-The intake whitelist is hardcoded (resolutions, codecs, season tokens, video/audio extensions). `PATHS__WHITELISTEDWORDS` is not used.
+The intake whitelist is hardcoded (resolutions, codecs, season tokens, video/audio extensions). Directories without those tokens are still processed if they contain audio files after the download settles.
 
 ## Environment variables
 

@@ -98,6 +98,76 @@ public class PathBuilderShould
     }
 
     [Fact]
+    public void GenerateMusicPathFromSpacedDashFolderWithoutAudioToken()
+    {
+        var conf = MusicConf();
+        var srcPath = "/src/Raft Lunk - Awayslack [Old Records]";
+        var files = new[] { srcPath + "/track.flac" };
+        var actual = PathBuilder.GenerateDestinationPath(srcPath, conf, files);
+
+        Assert.Equal("/music/Raft Lunk/Awayslack", actual);
+    }
+
+    [Fact]
+    public void GenerateMusicPathFromSpacedDashFolderWithYearInParens()
+    {
+        var conf = MusicConf();
+        var srcPath = "/src/Rabbalon - Legends (2023)";
+        var files = new[] { srcPath + "/track.flac" };
+        var actual = PathBuilder.GenerateDestinationPath(srcPath, conf, files);
+
+        Assert.Equal("/music/Rabbalon/Legends", actual);
+    }
+
+    [Fact]
+    public void GenerateMusicFileDestinationFromOneFolderRelease()
+    {
+        var conf = MusicConf();
+        var actual = PathBuilder.GenerateMusicFileDestination(
+            "/src",
+            "/src/Raft Lunk - Awayslack [Old Records]/track.flac",
+            conf
+        );
+
+        Assert.Equal("/music/Raft Lunk/Awayslack", actual);
+    }
+
+    [Fact]
+    public void GenerateMusicFileDestinationFromBoxsetAlbumFolder()
+    {
+        var conf = MusicConf();
+        var actual = PathBuilder.GenerateMusicFileDestination(
+            "/src",
+            "/src/Some Artist/Album One/01.flac",
+            conf
+        );
+
+        Assert.Equal("/music/Some Artist/Album One", actual);
+    }
+
+    [Fact]
+    public void GenerateMusicPathWhenFolderContainsAudioAndVideo()
+    {
+        var conf = MusicConf();
+        var srcPath = "/src/Some Album";
+        var files = new[] { srcPath + "/video.mkv", srcPath + "/track.flac" };
+        var actual = PathBuilder.GenerateDestinationPath(srcPath, conf, files);
+
+        Assert.Equal("/music/Some Album", actual);
+    }
+
+    [Fact]
+    public void GenerateMoviesPathWhenFolderContainsOnlyVideo()
+    {
+        var conf = MusicConf();
+        var srcPath = "/src/Testing.2025.1080p.WEB.h264-Testers";
+        var files = new[] { srcPath + "/movie.mkv" };
+        var actual = PathBuilder.GenerateDestinationPath(srcPath, conf, files);
+
+        Assert.Equal("/movies", actual);
+    }
+
+    [Fact]
     public void GenerateMoviesPathWhenReleaseIncludesAac()
     {
         var conf = MusicConf();

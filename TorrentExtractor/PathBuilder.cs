@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -8,6 +9,22 @@ namespace TorrentExtractor;
 
 public static class PathBuilder
 {
+    public static readonly string[] AudioExtensions =
+    [
+        ".flac",
+        ".mp3",
+        ".m4a",
+        ".aac",
+        ".wav",
+        ".ogg",
+        ".opus",
+        ".wma",
+        ".ape",
+        ".aiff",
+        ".aif",
+        ".wv"
+    ];
+
     private static readonly string[] AudioMarkers =
     [
         "FLAC",
@@ -87,15 +104,40 @@ public static class PathBuilder
     private static readonly Regex SeasonRangeRegex =
         new(@"^\d{1,2}-\d{1,2}$", RegexOptions.Compiled);
 
-    public static bool IsMusic(string sourcePath)
+    public static bool IsAudioFile(string path)
     {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return false;
+        }
+
+        var ext = Path.GetExtension(path);
+        return AudioExtensions.Contains(ext, StringComparer.OrdinalIgnoreCase);
+    }
+
+    public static bool IsMusic(string sourcePath, IEnumerable<string> containedFilePaths = null)
+    {
+        if (containedFilePaths != null && containedFilePaths.Any(IsAudioFile))
+        {
+            return true;
+        }
+
+        if (IsAudioFile(sourcePath))
+        {
+            return true;
+        }
+
         var name = Path.GetFileName(sourcePath);
         return ContainsAny(name, AudioMarkers) && !ContainsAny(name, VideoMarkers);
     }
 
-    public static string GenerateDestinationPath(string sourcePath, Paths paths)
+    public static string GenerateDestinationPath(
+        string sourcePath,
+        Paths paths,
+        IEnumerable<string> containedFilePaths = null
+    )
     {
-        if (IsMusic(sourcePath) && !string.IsNullOrWhiteSpace(paths.Music))
+        if (IsMusic(sourcePath, containedFilePaths) && !string.IsNullOrWhiteSpace(paths.Music))
         {
             return GenerateMusicPath(sourcePath, paths);
         }
@@ -211,10 +253,38 @@ public static class PathBuilder
     private static string FirstNonEmpty(string preferred, string fallback) =>
         !string.IsNullOrWhiteSpace(preferred) ? preferred : fallback;
 
-    private static string GenerateMusicPath(string sourcePath, Paths paths)
+    public static string GenerateMusicFileDestination(
+        string sourceRoot,
+        string filePath,
+        Paths paths
+    )
+    {
+        var root = sourceRoot.TrimEnd('/', '\\');
+        var relative = Path.GetRelativePath(root, filePath);
+        var parentRel = Path.GetDirectoryName(relative);
+
+        if (string.IsNullOrEmpty(parentRel) || parentRel == ".")
+        {
+            return GenerateMusicPathFromReleaseName(Path.GetFileName(filePath), paths);
+        }
+
+        var segments = parentRel.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries);
+
+        if (segments.Length == 1)
+        {
+            return GenerateMusicPathFromReleaseName(segments[0], paths);
+        }
+
+        var musicRoot = paths.Music.TrimEnd('/');
+        return $"{musicRoot}/{segments[^2]}/{segments[^1]}";
+    }
+
+    private static string GenerateMusicPath(string sourcePath, Paths paths) =>
+        GenerateMusicPathFromReleaseName(Path.GetFileName(sourcePath), paths);
+
+    private static string GenerateMusicPathFromReleaseName(string releaseName, Paths paths)
     {
         var musicRoot = paths.Music.TrimEnd('/');
-        var releaseName = Path.GetFileName(sourcePath);
 
         if (TryParseArtistAlbum(releaseName, out var artist, out var album))
         {

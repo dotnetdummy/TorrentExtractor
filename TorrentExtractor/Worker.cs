@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -183,10 +184,14 @@ public class Worker : BackgroundService
     {
         try
         {
+            var nameWhitelisted = _whitelistedWords.Any(word =>
+                sourcePath.Contains(word, StringComparison.InvariantCultureIgnoreCase)
+            );
+
             if (
-                !_whitelistedWords.Any(word =>
-                    sourcePath.Contains(word, StringComparison.InvariantCultureIgnoreCase)
-                )
+                !nameWhitelisted
+                && !Directory.Exists(sourcePath)
+                && !PathBuilder.IsAudioFile(sourcePath)
             )
             {
                 _logger.LogInformation(
@@ -209,7 +214,15 @@ public class Worker : BackgroundService
                 return;
             }
 
-            if (PathBuilder.IsMusic(sourcePath) && string.IsNullOrWhiteSpace(pathSettings.Music))
+            if (!await AwaitFileCopy(sourcePath, coreSettings, cancellationToken))
+            {
+                return;
+            }
+
+            var containedFiles = ListContainedFiles(sourcePath);
+            var isMusic = PathBuilder.IsMusic(sourcePath, containedFiles);
+
+            if (isMusic && string.IsNullOrWhiteSpace(pathSettings.Music))
             {
                 _logger.LogInformation(
                     "Music path is not configured. Skipping '{FullPath}'",
@@ -218,14 +231,20 @@ public class Worker : BackgroundService
                 return;
             }
 
-            if (!await AwaitFileCopy(sourcePath, coreSettings, cancellationToken))
+            if (!isMusic && !nameWhitelisted)
             {
+                _logger.LogInformation(
+                    "No audio files or whitelisted word was found in '{FullPath}'. No further processing is done",
+                    sourcePath
+                );
                 return;
             }
 
             await ExtractAndMoveAsync(
                 sourcePath,
-                PathBuilder.GenerateDestinationPath(sourcePath, pathSettings),
+                pathSettings,
+                isMusic,
+                containedFiles,
                 cancellationToken
             );
         }
@@ -291,20 +310,77 @@ public class Worker : BackgroundService
         }
     }
 
+    private static string[] ListContainedFiles(string sourcePath)
+    {
+        if (Directory.Exists(sourcePath))
+        {
+            return Directory.GetFiles(sourcePath, "*", SearchOption.AllDirectories);
+        }
+
+        if (File.Exists(sourcePath))
+        {
+            return [sourcePath];
+        }
+
+        return [];
+    }
+
     private async Task ExtractAndMoveAsync(
         string sourcePath,
-        string destinationDir,
+        Paths pathSettings,
+        bool isMusic,
+        IEnumerable<string> containedFiles,
         CancellationToken cancellationToken
     )
     {
-        _logger.LogInformation("Ensuring directory exist '{DestinationDir}'", destinationDir);
-        Directory.CreateDirectory(destinationDir);
-        await ExtractAndMoveRecursionAsync(sourcePath, destinationDir, cancellationToken);
+        string destinationDir = null;
+        if (!isMusic)
+        {
+            destinationDir = PathBuilder.GenerateDestinationPath(
+                sourcePath,
+                pathSettings,
+                containedFiles
+            );
+            _logger.LogInformation("Ensuring directory exist '{DestinationDir}'", destinationDir);
+            Directory.CreateDirectory(destinationDir);
+        }
+
+        await ExtractAndMoveRecursionAsync(
+            sourcePath,
+            destinationDir,
+            isMusic,
+            pathSettings,
+            cancellationToken
+        );
+    }
+
+    private string ResolveDestinationDir(
+        string filePath,
+        string destinationDir,
+        bool isMusic,
+        Paths pathSettings
+    )
+    {
+        if (!isMusic)
+        {
+            return destinationDir;
+        }
+
+        var dest = PathBuilder.GenerateMusicFileDestination(
+            pathSettings.Source,
+            filePath,
+            pathSettings
+        );
+        _logger.LogInformation("Ensuring directory exist '{DestinationDir}'", dest);
+        Directory.CreateDirectory(dest);
+        return dest;
     }
 
     private async Task ExtractAndMoveRecursionAsync(
         string sourcePath,
         string destinationDir,
+        bool isMusic,
+        Paths pathSettings,
         CancellationToken cancellationToken
     )
     {
@@ -318,11 +394,23 @@ public class Worker : BackgroundService
         {
             foreach (var dir in Directory.GetDirectories(sourcePath))
             {
-                await ExtractAndMoveRecursionAsync(dir, destinationDir, cancellationToken);
+                await ExtractAndMoveRecursionAsync(
+                    dir,
+                    destinationDir,
+                    isMusic,
+                    pathSettings,
+                    cancellationToken
+                );
             }
             foreach (var file in Directory.GetFiles(sourcePath))
             {
-                await ExtractAndMoveRecursionAsync(file, destinationDir, cancellationToken);
+                await ExtractAndMoveRecursionAsync(
+                    file,
+                    destinationDir,
+                    isMusic,
+                    pathSettings,
+                    cancellationToken
+                );
             }
 
             return;
@@ -333,18 +421,7 @@ public class Worker : BackgroundService
             case ".mkv":
             case ".avi":
             case ".mp4":
-            case ".flac":
-            case ".mp3":
-            case ".m4a":
-            case ".aac":
-            case ".wav":
-            case ".ogg":
-            case ".opus":
-            case ".wma":
-            case ".ape":
-            case ".aiff":
-            case ".aif":
-            case ".wv":
+            case { } when PathBuilder.IsAudioFile(sourcePath):
             {
                 var filename = Path.GetFileName(sourcePath);
 
@@ -354,6 +431,12 @@ public class Worker : BackgroundService
                     return;
                 }
 
+                destinationDir = ResolveDestinationDir(
+                    sourcePath,
+                    destinationDir,
+                    isMusic,
+                    pathSettings
+                );
                 var destinationPath = Path.Combine(destinationDir, filename);
 
                 _logger.LogInformation(
@@ -420,6 +503,12 @@ public class Worker : BackgroundService
 
             case ".rar":
             {
+                destinationDir = ResolveDestinationDir(
+                    sourcePath,
+                    destinationDir,
+                    isMusic,
+                    pathSettings
+                );
                 using var archive = RarArchive.OpenArchive(
                     sourcePath,
                     new ReaderOptions() { LeaveStreamOpen = false }
@@ -454,6 +543,12 @@ public class Worker : BackgroundService
 
             case ".zip":
             {
+                destinationDir = ResolveDestinationDir(
+                    sourcePath,
+                    destinationDir,
+                    isMusic,
+                    pathSettings
+                );
                 await using var stream = File.OpenRead(sourcePath);
                 var reader = ReaderFactory.OpenReader(stream);
 
