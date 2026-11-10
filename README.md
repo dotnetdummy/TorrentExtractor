@@ -22,6 +22,8 @@ Bind-mount the torrent complete folder to `PATHS__SOURCE` and each Plex library 
 
 qBittorrent and similar clients often finish a download by renaming `*.!qB` / `*.part` to the real filename. The worker watches both create and rename, and ignores incomplete suffixes until that rename happens. Files already in the source folder at startup are not processed.
 
+Video and audio copies are written to `filename.ext.partial` in the library directory, flushed to disk, and renamed to the real name only after SHA-256 checks out. The hash is taken while reading the source, then the source is read again and the partial file is hashed. All three must match, so a large file is read twice more after the copy. If the source changes during the copy, the partial is deleted and the file has to settle again, up to `CORE__MAXSETTLEHOURS`. A matching hash means the copy matched the source. It does not mean the torrent was finished: a preallocated file that nobody is writing will hash the same on both sides and still be unplayable. Keep incomplete downloads out of `PATHS__SOURCE` (a separate incomplete directory, or `.!qB` until the client renames the finished file).
+
 See [docker-compose.example.yml](docker-compose.example.yml) for a typical volume layout.
 
 The intake whitelist is hardcoded (resolutions, codecs, season tokens, video/audio extensions). Directories without those tokens are still processed if they contain audio files after the download settles.
@@ -29,7 +31,7 @@ The intake whitelist is hardcoded (resolutions, codecs, season tokens, video/aud
 ## Environment variables
 
 - `LOGGING__TIMESTAMPFORMAT`: Timestamp format for logs. Default is `[yyyy-MM-dd HH:mm:ss.ffffffzzzz]`.
-- `CORE__FILECOMPAREINTERVAL`: To determine if the file has been fully copied, the length of the file is compared between a given interval. If the lengths are equal, then the copy process starts. Default is 15 seconds. Must be 1 or greater.
+- `CORE__FILECOMPAREINTERVAL`: To determine if the download has settled, the length and last-write time are compared across this interval. Copying starts when both are unchanged. Default is 15 seconds. Must be 1 or greater.
 - `CORE__MAXSETTLEHOURS`: Maximum time to wait for a download to settle before skipping it. Default is 12 hours. Must be 1 or greater.
 - `PATHS__SOURCE`: **(required)** Source directory to watch for new files.
 - `PATHS__BLACKLISTEDWORDS`: Comma separated list of words to blacklist files in source directory. If not set, all files will be processed.

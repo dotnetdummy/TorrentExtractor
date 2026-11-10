@@ -9,4 +9,10 @@
         <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.11" />
         <PackageReference Include="SharpCompress" Version="0.50.4" />
     </ItemGroup>
+
+    <ItemGroup>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <_Parameter1>TorrentExtractor.Tests</_Parameter1>
+        </AssemblyAttribute>
+    </ItemGroup>
 </Project>

@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -260,54 +259,42 @@ public class Worker : BackgroundService
         CancellationToken cancellationToken
     )
     {
-        var interval = TimeSpan.FromSeconds(coreSettings.FileCompareInterval);
-        var deadline = Stopwatch.StartNew();
-        var maxWait = TimeSpan.FromHours(coreSettings.MaxSettleHours);
-        long previousLength = -1;
-
-        while (true)
-        {
-            if (cancellationToken.IsCancellationRequested)
+        var settled = await DownloadSettle.WaitAsync(
+            () =>
             {
-                throw new OperationCanceledException(cancellationToken);
-            }
+                if (
+                    string.IsNullOrWhiteSpace(sourcePath)
+                    || !File.Exists(sourcePath) && !Directory.Exists(sourcePath)
+                )
+                {
+                    throw new FileNotFoundException("Source path is not found!", sourcePath);
+                }
 
-            if (
-                string.IsNullOrWhiteSpace(sourcePath)
-                || !File.Exists(sourcePath) && !Directory.Exists(sourcePath)
-            )
-            {
-                throw new FileNotFoundException("Source path is not found!", sourcePath);
-            }
-
-            var length = Directory.Exists(sourcePath)
-                ? new DirectoryInfo(sourcePath).Length()
-                : new FileInfo(sourcePath).Length;
-
-            if (length == previousLength)
-            {
-                return true;
-            }
-
-            if (deadline.Elapsed >= maxWait)
-            {
-                _logger.LogError(
-                    "File '{SourcePath}' did not settle within {MaxSettleHours} hours. Skipping",
+                return PathSnapshot.Capture(sourcePath);
+            },
+            TimeSpan.FromSeconds(coreSettings.FileCompareInterval),
+            TimeSpan.FromHours(coreSettings.MaxSettleHours),
+            Task.Delay,
+            () =>
+                _logger.LogInformation(
+                    "File '{SourcePath}' is still being copied. Waiting for {Interval} seconds...",
                     sourcePath,
-                    coreSettings.MaxSettleHours
-                );
-                return false;
-            }
+                    coreSettings.FileCompareInterval
+                ),
+            cancellationToken
+        );
 
-            _logger.LogInformation(
-                "File '{SourcePath}' is still being copied. Waiting for {Interval} seconds...",
+        if (!settled)
+        {
+            _logger.LogError(
+                "File '{SourcePath}' did not settle within {MaxSettleHours} hours. Skipping",
                 sourcePath,
-                coreSettings.FileCompareInterval
+                coreSettings.MaxSettleHours
             );
-
-            await Task.Delay(interval, cancellationToken);
-            previousLength = length;
+            return false;
         }
+
+        return true;
     }
 
     private static string[] ListContainedFiles(string sourcePath)
@@ -445,55 +432,19 @@ public class Worker : BackgroundService
                     destinationPath
                 );
 
-                await CopyFileAsync(sourcePath, destinationPath, cancellationToken);
+                var core = _coreSettings.Value;
+                var copied = await VerifiedFileCopy.CopyAsync(
+                    sourcePath,
+                    destinationPath,
+                    TimeSpan.FromSeconds(core.FileCompareInterval),
+                    TimeSpan.FromHours(core.MaxSettleHours),
+                    _logger,
+                    cancellationToken
+                );
 
-                var sourceLength = Directory.Exists(sourcePath)
-                    ? new DirectoryInfo(sourcePath).Length()
-                    : new FileInfo(sourcePath).Length;
-
-                var destinationLength = Directory.Exists(destinationPath)
-                    ? new DirectoryInfo(destinationPath).Length()
-                    : new FileInfo(destinationPath).Length;
-
-                if (sourceLength != destinationLength)
+                if (!copied)
                 {
-                    _logger.LogInformation(
-                        "File length do not match! '{SourcePath}' is {SourceLength} and '{DestinationPath}' is {DestinationLength}. Retrying...",
-                        sourcePath,
-                        sourceLength,
-                        destinationPath,
-                        destinationLength
-                    );
-
-                    await CopyFileAsync(sourcePath, destinationPath, cancellationToken);
-
-                    sourceLength = Directory.Exists(sourcePath)
-                        ? new DirectoryInfo(sourcePath).Length()
-                        : new FileInfo(sourcePath).Length;
-
-                    destinationLength = Directory.Exists(destinationPath)
-                        ? new DirectoryInfo(destinationPath).Length()
-                        : new FileInfo(destinationPath).Length;
-
-                    if (sourceLength != destinationLength)
-                    {
-                        _logger.LogError(
-                            "An error occurred when copying '{SourcePath}' to '{DestinationPath}'. Cleaning up corrupted files...",
-                            sourcePath,
-                            destinationPath
-                        );
-
-                        if (Directory.Exists(destinationPath))
-                        {
-                            Directory.Delete(destinationPath, true);
-                        }
-                        else
-                        {
-                            File.Delete(destinationPath);
-                        }
-
-                        break;
-                    }
+                    break;
                 }
 
                 _logger.LogInformation("Done copying file '{SourcePath}'", sourcePath);
@@ -595,34 +546,5 @@ public class Worker : BackgroundService
         return IncompleteSuffixes.Any(suffix =>
             name.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)
         );
-    }
-
-    private static async Task CopyFileAsync(
-        string src,
-        string dest,
-        CancellationToken cancellationToken
-    )
-    {
-        var buffer = new byte[1024 * 1024];
-        int numRead;
-
-        await using var reader = File.Open(
-            src,
-            FileMode.Open,
-            FileAccess.Read,
-            FileShare.ReadWrite
-        );
-        await using var writer = new FileStream(
-            dest,
-            FileMode.Create,
-            FileAccess.Write,
-            FileShare.None,
-            buffer.Length,
-            FileOptions.Asynchronous
-        );
-        while ((numRead = await reader.ReadAsync(buffer, cancellationToken)) != 0)
-        {
-            await writer.WriteAsync(buffer.AsMemory(0, numRead), cancellationToken);
-        }
     }
 }

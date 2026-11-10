@@ -5,7 +5,7 @@ namespace TorrentExtractor.Settings;
 public class Core
 {
     /// <summary>
-    /// To determine if the file has been fully copied, the length of the file is compared between a given interval. If the lengths are equal, then the copy process starts. Default is 15 seconds. Must be 1 or greater.
+    /// To determine if the download has settled, the length and last-write time are compared across this interval. Copying starts when both are unchanged. Default is 15 seconds. Must be 1 or greater.
     /// </summary>
     public int FileCompareInterval { get; set; } = 15;
 

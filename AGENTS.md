@@ -11,12 +11,14 @@ Config env vars: [README.md](README.md). Binding and validation: `TorrentExtract
 1. `FileSystemWatcher.Created` and `Renamed` on `Paths.Source` (that directory only, not recursive). Files already there at startup are ignored. After an event, wait 1s, then confirm the path still exists. Incomplete suffixes (`.!qB`, `.part`, `.!ut`) are skipped. Processing is serialized. `watcher.Error` is logged.
 2. Continue if the path contains a hardcoded whitelist token (`Worker._whitelistedWords`: resolutions, codecs, `S0`/`Season`, video extensions, audio markers including `FLAC`/`WAV`/`OPUS`/`16BIT`/`24BIT`/`HI-RES`, audio extensions), **or** the path is a directory, **or** the path is an audio file (`PathBuilder.IsAudioFile`). Other files are skipped.
 3. Stop if the path contains a configured blacklist token (`Paths.BlacklistedWords`, comma-separated and trimmed).
-4. **Settle**: poll file or directory size every `Core.FileCompareInterval` seconds until two readings match, or until `Core.MaxSettleHours` (default 12). Directory size is a recursive sum (`Extensions.Length`).
+4. **Settle**: poll file or directory size and newest last-write time every `Core.FileCompareInterval` seconds until both match the previous reading, or until `Core.MaxSettleHours` (default 12). Directory size is a recursive sum (`Extensions.Length`). The newest time is the newest contained file (`PathSnapshot.Capture`). A preallocated download keeps a constant size while pieces are written, so the mtime check is what keeps that from looking finished.
 5. Enumerate files. **Music** when any file has an audio extension (`PathBuilder.AudioExtensions`), or when the name matches the audio-marker fallback (`PathBuilder.IsMusic`). Stop if music and `Paths.Music` is unset. Stop if not music and the path was not name-whitelisted.
 6. **Route**: video with `PathBuilder.GenerateDestinationPath`. Music destination is per file (`PathBuilder.GenerateMusicFileDestination`).
-7. Recurse the source: copy video (`.mkv`/`.avi`/`.mp4`) and audio (`PathBuilder.IsAudioFile`); extract `.rar`/`.zip` into the destination. Other extensions are skipped. Copies open the source with `FileShare.ReadWrite` so a seeding client can keep the file open.
+7. Recurse the source: copy video (`.mkv`/`.avi`/`.mp4`) and audio (`PathBuilder.IsAudioFile`); extract `.rar`/`.zip` into the destination. Other extensions are skipped. Copies open the source with `FileShare.ReadWrite` so a seeding client can keep the file open. The destination is written as `Name.ext.partial` in the library directory, flushed to disk (`FileStream.Flush(true)`), and renamed onto the final name only after verification. Plex does not see a growing video. A crash leaves the `.partial` file.
 
-Copy mismatch: retry once, then delete the destination and keep the source. Archive directory entries log a warning and are skipped; nested archives inside an extract are not re-processed.
+Verification hashes the bytes as they are read (SHA-256), then reads the source again and hashes the partial. Source hash differs: delete the partial and settle again until `Core.MaxSettleHours` (the client was still writing). Source matches but destination does not: retry the copy twice, then delete the partial and log an error. The hash proves the copy matched the source at that moment. It does not prove the torrent was complete; that still depends on the client only moving finished files into `Paths.Source` (incomplete folder, or `.!qB` until rename). A verified copy reads the file twice more after the write (source, then destination).
+
+Archive directory entries log a warning and are skipped; nested archives inside an extract are not re-processed.
 
 Startup waits until `Paths.Source` exists (TrueNAS mount race). Critical startup failure calls `Environment.Exit(1)`.
 
@@ -44,9 +46,12 @@ A routing change is done when every new release-name pattern has a `PathBuilderS
 ## Layout
 
 - `TorrentExtractor/Worker.cs` — watch, settle, extract/copy.
+- `TorrentExtractor/DownloadSettle.cs` — size and mtime settle loop.
+- `TorrentExtractor/VerifiedFileCopy.cs` — partial copy, hash, rename.
+- `TorrentExtractor/PathSnapshot.cs` — length and newest mtime.
 - `TorrentExtractor/PathBuilder.cs` — release name / contained files → destination.
 - `TorrentExtractor/Settings/` — `Core` and `Paths` Options; `Validate()` on startup.
-- `TorrentExtractor.Tests/` — xunit; routing only today.
+- `TorrentExtractor.Tests/` — xunit; routing, settle, and copy verification.
 
 ## Conventions
 
