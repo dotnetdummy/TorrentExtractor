@@ -115,6 +115,36 @@ public static class PathBuilder
         return AudioExtensions.Contains(ext, StringComparer.OrdinalIgnoreCase);
     }
 
+    public static bool IsSamplePath(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return false;
+        }
+
+        foreach (var segment in path.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries))
+        {
+            var name = Path.GetFileNameWithoutExtension(segment);
+            if (
+                name.Equals("sample", StringComparison.OrdinalIgnoreCase)
+                || name.Equals("samples", StringComparison.OrdinalIgnoreCase)
+            )
+            {
+                return true;
+            }
+
+            if (
+                name.EndsWith("-sample", StringComparison.OrdinalIgnoreCase)
+                || name.EndsWith(".sample", StringComparison.OrdinalIgnoreCase)
+            )
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public static bool IsMusic(string sourcePath, IEnumerable<string> containedFilePaths = null)
     {
         if (containedFilePaths != null && containedFilePaths.Any(IsAudioFile))

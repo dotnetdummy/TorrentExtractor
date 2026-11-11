@@ -379,6 +379,12 @@ public class Worker : BackgroundService
 
         if (Directory.Exists(sourcePath))
         {
+            if (PathBuilder.IsSamplePath(sourcePath))
+            {
+                _logger.LogInformation("Skipping sample '{SourcePath}'", sourcePath);
+                return;
+            }
+
             foreach (var dir in Directory.GetDirectories(sourcePath))
             {
                 await ExtractAndMoveRecursionAsync(
@@ -400,6 +406,12 @@ public class Worker : BackgroundService
                 );
             }
 
+            return;
+        }
+
+        if (PathBuilder.IsSamplePath(sourcePath))
+        {
+            _logger.LogInformation("Skipping sample '{SourcePath}'", sourcePath);
             return;
         }
 
@@ -469,6 +481,12 @@ public class Worker : BackgroundService
                 {
                     if (!entry.IsDirectory)
                     {
+                        if (PathBuilder.IsSamplePath(entry.Key))
+                        {
+                            _logger.LogInformation("Skipping sample '{SourcePath}'", entry.Key);
+                            continue;
+                        }
+
                         _logger.LogInformation(
                             "Extracting file '{SourcePath}' to '{DestinationDir}'",
                             entry.Key,
@@ -507,6 +525,15 @@ public class Worker : BackgroundService
                 {
                     if (!reader.Entry.IsDirectory)
                     {
+                        if (PathBuilder.IsSamplePath(reader.Entry.Key))
+                        {
+                            _logger.LogInformation(
+                                "Skipping sample '{SourcePath}'",
+                                reader.Entry.Key
+                            );
+                            continue;
+                        }
+
                         _logger.LogInformation(
                             "Extracting '{SourcePath}' to '{DestinationDir}'",
                             reader.Entry.Key,

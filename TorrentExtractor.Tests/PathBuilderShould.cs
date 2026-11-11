@@ -246,6 +246,34 @@ public class PathBuilderShould
         Assert.Equal(expected, actual);
     }
 
+    [Theory]
+    [InlineData(
+        "/torrent/downloads/crete.of.power.S03E02.1080p.WEB.H264-CAKES/Sample/crete.of.power.s03e02.1080p.web.h264-cakes-sample.mkv"
+    )]
+    [InlineData("/torrent/downloads/crete.of.power.S03E02.1080p.WEB.H264-CAKES/Sample")]
+    [InlineData("/torrent/downloads/crete.of.power.S03E02.1080p.WEB.H264-CAKES/Samples")]
+    [InlineData(
+        "/torrent/downloads/crete.of.power.S03E02.1080p.WEB.H264-CAKES/crete.of.power.s03e02.1080p.web.h264-cakes-sample.mkv"
+    )]
+    [InlineData("/torrent/downloads/Movie.2020.1080p.BluRay-GROUP/sample.mkv")]
+    [InlineData("/torrent/downloads/Movie.2020.1080p.BluRay-GROUP/movie.sample.mkv")]
+    [InlineData("Sample/file.mkv")]
+    [InlineData("Sample\\file.mkv")]
+    public void RecognizeSamplePath(string path)
+    {
+        Assert.True(PathBuilder.IsSamplePath(path));
+    }
+
+    [Theory]
+    [InlineData(
+        "/torrent/downloads/crete.of.power.S03E02.1080p.WEB.H264-CAKES/crete.of.power.s03e02.1080p.web.h264-cakes.mkv"
+    )]
+    [InlineData("/src/The.Sample.2024.1080p.BluRay.mkv")]
+    public void KeepFeaturePathThatIsNotASample(string path)
+    {
+        Assert.False(PathBuilder.IsSamplePath(path));
+    }
+
     [Fact]
     public void GenerateTvPathByResolutionToken()
     {
